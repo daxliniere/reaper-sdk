@@ -688,13 +688,9 @@ WDL_DLGRET wavecfgDlgProc(HWND hwndDlg, UINT uMsg, WPARAM wParam, LPARAM lParam)
 
       EnableWindow(GetDlgItem(hwndDlg, IDC_QUALITY_LBL), en_qual);
       EnableWindow(GetDlgItem(hwndDlg, IDC_QUALITY), en_qual);
-      EnableWindow(GetDlgItem(hwndDlg, IDC_QUALITY_APPROX), en_qual);
-      ShowWindow(GetDlgItem(hwndDlg, IDC_QUALITY_APPROX), (mode == MODE_MAX || en_qual ? SW_HIDE : SW_SHOW));
 
       EnableWindow(GetDlgItem(hwndDlg, IDC_BITRATE_LBL), en_br);
       EnableWindow(GetDlgItem(hwndDlg, IDC_BITRATE), en_br);
-      EnableWindow(GetDlgItem(hwndDlg, IDC_BITRATE_APPROX), en_br);
-      ShowWindow(GetDlgItem(hwndDlg, IDC_BITRATE_APPROX), (mode == MODE_MAX || en_br ? SW_HIDE : SW_SHOW));
     }
     return 0;
     case  WM_USER + 201:

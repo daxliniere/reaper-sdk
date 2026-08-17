@@ -571,6 +571,10 @@ REAPER_PLUGIN_DLL_EXPORT int REAPER_PLUGIN_ENTRYPOINT(REAPER_PLUGIN_HINSTANCE hI
   rec->Register("sendlocaloscmessage", (void*)SendLocalOscMessage);
   rec->Register("destroylocaloschandler", (void*)DestroyLocalOscHandler);
 
+  rec->Register("ext_name",(void *)"Control surface/OSC support");
+  rec->Register("ext_vendor",(void *)"Cockos");
+  rec->Register("ext_url",(void *)"https://github.com/justinfrankel/reaper-sdk");
+
   IMPORT_LOCALIZE_RPLUG(rec)
 
   return 1;
