@@ -22,6 +22,7 @@ In REAPER's control-surface list, select **Mackie Control Universal (Dax Liniere
 - Double-push a V-pot, hold the second push, and turn it to change the sending channel pair; the source track's channel count grows when required.
 - Channel changes display the complete source-to-destination route.
 - **Notice time** controls temporary display messages (0.1-10.0 seconds; default 1.5).
+- Channel-routing notices remain visible until the configured Notice time has elapsed after routing input stops.
 - Shutdown messages are semicolon-separated; one is selected when the surface closes.
 - Outside Sends Mode, JOG retains stock movement. JOG push toggles Scrub unless the master fader is in Last-touched FX parameter mode.
 - V-pot push deliberately does not reset pan outside Sends Mode.

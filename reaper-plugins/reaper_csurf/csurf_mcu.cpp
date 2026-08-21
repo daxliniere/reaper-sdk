@@ -209,7 +209,7 @@ struct ScheduledAction {
 #define CONFIG_FLAG_MASTER_FADER_LTFP 32
 #define CONFIG_FLAG_RECARM_BANK 64
 
-#define DAX_MCU_VERSION "0.3.3-dev"
+#define DAX_MCU_VERSION "0.3.4-dev"
 
 static const char DEFAULT_SHUTDOWN_MESSAGES[] =
   "You are an infinite being.;Begin from elsewhere.;Let the edges soften.;"
@@ -305,6 +305,7 @@ class CSurf_MCU : public IReaperControlSurface
     bool m_send_encoder_pending_tap[8]{};
     double m_send_encoder_released_at[8]{};
     double m_sends_overlay_until{};
+    bool m_sends_overlay_follows_routing_input{};
     double m_ltfp_overlay_until{};
     double m_notice_time{1.5};
     std::string m_shutdown_messages{DEFAULT_SHUTDOWN_MESSAGES};
@@ -489,7 +490,8 @@ class CSurf_MCU : public IReaperControlSurface
       snprintf(msg,sizeof(msg),"%s: %s",name,value);
       memset(screen,' ',112); screen[112]=0; memcpy(screen,msg,std::min((size_t)112,strlen(msg)));
       UpdateMackieDisplay(0,screen,56); UpdateMackieDisplay(56,screen+56,56);
-      m_sends_overlay_until=DaxNowSeconds()+m_notice_time; ResetSendsDisplayCache();
+      m_sends_overlay_until=DaxNowSeconds()+m_notice_time;
+      m_sends_overlay_follows_routing_input=false; ResetSendsDisplayCache();
     }
 
     void FormatChannelPair(int value, char *out, int size)
@@ -511,7 +513,8 @@ class CSurf_MCU : public IReaperControlSurface
       snprintf(msg,sizeof(msg),"%d: %.32s %s -> %s %d: %.32s",CSurf_TrackToID(track,false),src,sc,dc,CSurf_TrackToID(dest,false),dst);
       memset(screen,' ',112); screen[112]=0; memcpy(screen,msg,std::min((size_t)112,strlen(msg)));
       UpdateMackieDisplay(0,screen,56); UpdateMackieDisplay(56,screen+56,56);
-      m_sends_overlay_until=DaxNowSeconds()+m_notice_time; ResetSendsDisplayCache();
+      m_sends_overlay_until=DaxNowSeconds()+m_notice_time;
+      m_sends_overlay_follows_routing_input=true; ResetSendsDisplayCache();
     }
 
     void CycleVisibleSendMode(int slot)
@@ -560,7 +563,8 @@ class CSurf_MCU : public IReaperControlSurface
     void SetSendsMode(bool enabled)
     {
       if (m_sends_mode==enabled) return;
-      m_sends_mode=enabled; m_send_offset=0; m_sends_display_track=NULL; m_sends_overlay_until=0.0;
+      m_sends_mode=enabled; m_send_offset=0; m_sends_display_track=NULL;
+      m_sends_overlay_until=0.0; m_sends_overlay_follows_routing_input=false;
       ResetSendsDisplayCache();
       for (int i=0;i<8;i++)
       {
@@ -602,8 +606,21 @@ class CSurf_MCU : public IReaperControlSurface
     void UpdateSendsDisplay()
     {
       if (!m_sends_mode || !m_midiout || m_is_mcuex) return;
-      double now=DaxNowSeconds(); if (m_sends_overlay_until>now) return;
-      if (m_sends_overlay_until!=0.0) { m_sends_overlay_until=0.0; ResetSendsDisplayCache(); }
+      double now=DaxNowSeconds();
+      if (m_sends_overlay_until!=0.0 && m_sends_overlay_follows_routing_input)
+      {
+        for (int i=0;i<8;i++) if (m_send_encoder_pressed_at[i]>0.0)
+        {
+          m_sends_overlay_until=now+m_notice_time;
+          return;
+        }
+      }
+      if (m_sends_overlay_until>now) return;
+      if (m_sends_overlay_until!=0.0)
+      {
+        m_sends_overlay_until=0.0; m_sends_overlay_follows_routing_input=false;
+        ResetSendsDisplayCache();
+      }
       MediaTrack *track=GetSendsTrack();
       if (track!=m_sends_display_track) { m_sends_display_track=track; m_send_offset=0; ResetSendsDisplayCache(); }
       int count=track?GetTrackNumSends(track,0):0;
@@ -634,7 +651,8 @@ class CSurf_MCU : public IReaperControlSurface
     void MCUReset()
     {
       m_sends_mode=false; m_send_offset=0; m_sends_display_track=NULL;
-      m_sends_overlay_until=0.0; m_ltfp_overlay_until=0.0; ResetSendsDisplayCache();
+      m_sends_overlay_until=0.0; m_sends_overlay_follows_routing_input=false;
+      m_ltfp_overlay_until=0.0; ResetSendsDisplayCache();
       for (int i=0;i<8;i++)
       {
         m_send_encoder_turned[i]=false; m_send_encoder_pressed_at[i]=0.0;
@@ -977,6 +995,11 @@ class CSurf_MCU : public IReaperControlSurface
 	    {
 	      double now=DaxNowSeconds();
 	      m_send_encoder_pressed_at[trackid]=0.0;
+	      if (m_send_encoder_turned[trackid])
+	      {
+	        MediaTrack *track=NULL; int send=0;
+	        if (GetVisibleSend(trackid,&track,&send)) ShowSendRoute(track,send);
+	      }
 	      if (!m_send_encoder_source_mode[trackid] && !m_send_encoder_turned[trackid] &&
 	          !m_send_encoder_longpress_triggered[trackid])
 	      {
