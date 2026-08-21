@@ -203,13 +203,13 @@ struct ScheduledAction {
 
 #define CONFIG_FLAG_FADER_TOUCH_MODE 1
 #define CONFIG_FLAG_MAPF1F8TOMARKERS 2
-#define CONFIG_FLAG_LEGACY_NOBANKOFFSET 4 // Reserved for compatibility; intentionally ignored.
+#define CONFIG_FLAG_NOBANKOFFSET 4
 #define CONFIG_FLAG_MASTER_FADER_DISABLED 8
 #define CONFIG_FLAG_SURFACE_DISABLED 16
 #define CONFIG_FLAG_MASTER_FADER_LTFP 32
 #define CONFIG_FLAG_RECARM_BANK 64
 
-#define DAX_MCU_VERSION "0.3.1-dev"
+#define DAX_MCU_VERSION "0.3.2-dev"
 
 static const char DEFAULT_SHUTDOWN_MESSAGES[] =
   "You are an infinite being.;Begin from elsewhere.;Let the edges soften.;"
@@ -350,7 +350,7 @@ class CSurf_MCU : public IReaperControlSurface
 
     int GetBankOffset() const
     {
-      return m_offset + 1 + m_allmcus_bank_offset;
+      return (m_cfg_flags&CONFIG_FLAG_NOBANKOFFSET) ? (m_offset + 1) : (m_offset + 1 + m_allmcus_bank_offset);
     }
 
     bool IsFocusedFxValid() const
@@ -1801,6 +1801,8 @@ public:
     
     void OnTrackSelection(MediaTrack *trackid) 
     { 
+      if (m_cfg_flags&CONFIG_FLAG_NOBANKOFFSET) return;
+
       int tid=CSurf_TrackToID(trackid,g_csurf_mcpmode);
       // if no normal MCU's here, then slave it
       int x;
@@ -1808,7 +1810,7 @@ public:
       for (x = 0; x < m_mcu_list.GetSize(); x ++)
       {
         CSurf_MCU *mcu=m_mcu_list.Get(x);
-        if (mcu)
+        if (mcu && !(mcu->m_cfg_flags&CONFIG_FLAG_NOBANKOFFSET))
         {
           if (mcu->m_offset+8 > movesize)
             movesize=mcu->m_offset+8;
@@ -2145,6 +2147,8 @@ static WDL_DLGRET dlgProc(HWND hwndDlg, UINT uMsg, WPARAM wParam, LPARAM lParam)
           CheckDlgButton(hwndDlg,IDC_CHECK1,BST_CHECKED);
         if (parms[4]&CONFIG_FLAG_MAPF1F8TOMARKERS)
           CheckDlgButton(hwndDlg,IDC_CHECK2,BST_CHECKED);
+        if (parms[4]&CONFIG_FLAG_NOBANKOFFSET)
+          CheckDlgButton(hwndDlg,IDC_CHECK3,BST_CHECKED);
         CheckDlgButton(hwndDlg,IDC_ENABLE_SURFACE,(parms[4]&CONFIG_FLAG_SURFACE_DISABLED)?BST_UNCHECKED:BST_CHECKED);
         CheckRadioButton(hwndDlg,IDC_MASTER_VOLUME,IDC_MASTER_DISABLED,
           (parms[4]&CONFIG_FLAG_MASTER_FADER_DISABLED)?IDC_MASTER_DISABLED:
@@ -2184,6 +2188,8 @@ static WDL_DLGRET dlgProc(HWND hwndDlg, UINT uMsg, WPARAM wParam, LPARAM lParam)
           cflags|=CONFIG_FLAG_FADER_TOUCH_MODE;
         if (IsDlgButtonChecked(hwndDlg,IDC_CHECK2))
           cflags|=CONFIG_FLAG_MAPF1F8TOMARKERS;
+        if (IsDlgButtonChecked(hwndDlg,IDC_CHECK3))
+          cflags|=CONFIG_FLAG_NOBANKOFFSET;
         if (!IsDlgButtonChecked(hwndDlg,IDC_ENABLE_SURFACE)) cflags|=CONFIG_FLAG_SURFACE_DISABLED;
         if (IsDlgButtonChecked(hwndDlg,IDC_MASTER_DISABLED)) cflags|=CONFIG_FLAG_MASTER_FADER_DISABLED;
         if (IsDlgButtonChecked(hwndDlg,IDC_MASTER_LTFP)) cflags|=CONFIG_FLAG_MASTER_FADER_LTFP;

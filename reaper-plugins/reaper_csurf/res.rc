@@ -70,7 +70,7 @@ BEGIN
                     IDC_EDIT2_LBL2,108,58,148,8
 END
 
-IDD_SURFACEEDIT_MCU1 DIALOG DISCARDABLE  0, 0, 365, 194
+IDD_SURFACEEDIT_MCU1 DIALOG DISCARDABLE  0, 0, 365, 209
 STYLE DS_CONTROL | WS_CHILD
 FONT 8, "MS Shell Dlg"
 BEGIN
@@ -83,7 +83,7 @@ BEGIN
     RTEXT           "Surface offset (tracks):",IDC_EDIT1_LBL,4,37,72,8
     EDITTEXT        IDC_EDIT1,81,36,24,12,ES_AUTOHSCROLL
     RTEXT           "Size tweak:",IDC_EDIT2_LBL,30,53,47,8
-    EDITTEXT        IDC_EDIT2,80,50,24,12,ES_AUTOHSCROLL
+    EDITTEXT        IDC_EDIT2,81,50,24,12,ES_AUTOHSCROLL
     LTEXT           "(leave at 9 unless you know what you're doing)",
                     IDC_EDIT2_LBL2,108,52,148,8
     CONTROL         "Enable control surface",IDC_ENABLE_SURFACE,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,4,67,93,10
@@ -91,6 +91,8 @@ BEGIN
                     IDC_CHECK1,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,105,67,190,10
     CONTROL         "Map F1-F8 to go to markers",IDC_CHECK2,"Button",
                     BS_AUTOCHECKBOX | WS_TABSTOP,4,79,120,10
+    CONTROL         "Ignore global bank offsets (always map to tracks specified)",
+                    IDC_CHECK3,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,140,79,221,10
     GROUPBOX        "Master fader",IDC_STATIC,4,92,176,62
     CONTROL         "Master volume",IDC_MASTER_VOLUME,"Button",BS_AUTORADIOBUTTON,10,104,70,10
     CONTROL         "Last-touched FX parameter",IDC_MASTER_LTFP,"Button",BS_AUTORADIOBUTTON,10,116,110,10
@@ -103,8 +105,8 @@ BEGIN
     EDITTEXT        IDC_NOTICE_TIME,51,157,30,12,ES_AUTOHSCROLL
     LTEXT           "secs",IDC_STATIC,85,159,20,8
     LTEXT           "Shutdown message(s), separated by semicolons:",IDC_STATIC,4,172,170,8
-    EDITTEXT        IDC_SHUTDOWN_MESSAGE,177,170,184,12,ES_AUTOHSCROLL
-    LTEXT           "v0.3.1-dev",IDC_VERSION,4,185,60,8
+    EDITTEXT        IDC_SHUTDOWN_MESSAGE,4,182,357,12,ES_AUTOHSCROLL
+    LTEXT           "v0.3.2-dev",IDC_VERSION,4,198,60,8
 END
 
 IDD_SURFACEEDIT_OSC DIALOG DISCARDABLE  0, 0, 268, 133

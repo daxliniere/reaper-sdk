@@ -13,6 +13,7 @@ In REAPER's control-surface list, select **Mackie Control Universal (Dax Liniere
 - **Enable control surface** releases or reconnects the configured MIDI ports.
 - **Record arm buttons** selects normal record-arm operation or the optional Bank-select behavior.
 - **F1-F8 map to markers** retains Cockos's universal MCU option.
+- **Ignore global bank offsets** retains Cockos's option to keep this surface fixed to its configured track range instead of following the shared MCU bank.
 - Press **Mixer** to enter or leave Sends Mode. It always controls the first selected track.
 - In Sends Mode, turn a V-pot for send level and turn JOG to move through sends one at a time.
 - Tap a V-pot to cycle Post-Fader (Post-Pan), Pre-Fader (Post-FX), and Pre-Fader (Pre-FX).
