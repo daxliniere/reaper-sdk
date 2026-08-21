@@ -209,7 +209,7 @@ struct ScheduledAction {
 #define CONFIG_FLAG_MASTER_FADER_LTFP 32
 #define CONFIG_FLAG_RECARM_BANK 64
 
-#define DAX_MCU_VERSION "0.3.2-dev"
+#define DAX_MCU_VERSION "0.3.3-dev"
 
 static const char DEFAULT_SHUTDOWN_MESSAGES[] =
   "You are an infinite being.;Begin from elsewhere.;Let the edges soften.;"
@@ -221,6 +221,7 @@ static const char DEFAULT_SHUTDOWN_MESSAGES[] =
   "The centre is optional.;Reality permits revisions.";
 
 #define DOUBLE_CLICK_INTERVAL 250 /* ms */
+#define SEND_DOUBLE_PUSH_INTERVAL 350 /* ms */
 
 class TrackIterator {
   int m_index;
@@ -300,6 +301,9 @@ class CSurf_MCU : public IReaperControlSurface
     bool m_send_encoder_turned[8]{};
     double m_send_encoder_pressed_at[8]{};
     bool m_send_encoder_longpress_triggered[8]{};
+    bool m_send_encoder_source_mode[8]{};
+    bool m_send_encoder_pending_tap[8]{};
+    double m_send_encoder_released_at[8]{};
     double m_sends_overlay_until{};
     double m_ltfp_overlay_until{};
     double m_notice_time{1.5};
@@ -539,12 +543,31 @@ class CSurf_MCU : public IReaperControlSurface
       if (SetTrackSendInfo_Value(track,0,send,"I_DSTCHAN",newoff)) ShowSendRoute(track,send);
     }
 
+    void ChangeVisibleSendSourceChannels(int slot, int direction)
+    {
+      MediaTrack *track=NULL; int send=0;
+      if (!GetVisibleSend(slot,&track,&send)) return;
+      int current=(int)GetTrackSendInfo_Value(track,0,send,"I_SRCCHAN");
+      int oldoff=current<0?0:(current&0x3ff);
+      int newoff=std::max(0,std::min(126,oldoff+direction));
+      if (newoff==oldoff && current>=0 && !(current&0x400)) return;
+      int nch=std::max(2,(int)GetMediaTrackInfo_Value(track,"I_NCHAN"));
+      int required=(newoff+3)&~1;
+      if (required>nch && !SetMediaTrackInfo_Value(track,"I_NCHAN",required)) return;
+      if (SetTrackSendInfo_Value(track,0,send,"I_SRCCHAN",newoff)) ShowSendRoute(track,send);
+    }
+
     void SetSendsMode(bool enabled)
     {
       if (m_sends_mode==enabled) return;
       m_sends_mode=enabled; m_send_offset=0; m_sends_display_track=NULL; m_sends_overlay_until=0.0;
       ResetSendsDisplayCache();
-      for (int i=0;i<8;i++) { m_send_encoder_turned[i]=false; m_send_encoder_pressed_at[i]=0.0; m_send_encoder_longpress_triggered[i]=false; }
+      for (int i=0;i<8;i++)
+      {
+        m_send_encoder_turned[i]=false; m_send_encoder_pressed_at[i]=0.0;
+        m_send_encoder_longpress_triggered[i]=false; m_send_encoder_source_mode[i]=false;
+        m_send_encoder_pending_tap[i]=false; m_send_encoder_released_at[i]=0.0;
+      }
       if (m_midiout && !m_is_mcuex) m_midiout->Send(0x90,0x54,enabled?0x7f:0,-1);
       if (!enabled && m_midiout) { UpdateMackieDisplay(0,"",56); UpdateMackieDisplay(56,"",56); }
       CSurf_ResetAllCachedVolPanStates(); TrackList_UpdateAllExternalSurfaces();
@@ -559,9 +582,21 @@ class CSurf_MCU : public IReaperControlSurface
     void ProcessSendLongPresses(double now)
     {
       if (!m_sends_mode) return;
-      for (int i=0;i<8;i++) if (m_send_encoder_pressed_at[i]>0.0 && !m_send_encoder_turned[i] &&
-          !m_send_encoder_longpress_triggered[i] && now-m_send_encoder_pressed_at[i]>=1.5)
-      { ToggleVisibleSendMute(i); m_send_encoder_longpress_triggered[i]=true; }
+      for (int i=0;i<8;i++)
+      {
+        if (m_send_encoder_pending_tap[i] &&
+            now-m_send_encoder_released_at[i]>(SEND_DOUBLE_PUSH_INTERVAL/1000.0))
+        {
+          m_send_encoder_pending_tap[i]=false;
+          CycleVisibleSendMode(i);
+        }
+        if (m_send_encoder_pressed_at[i]>0.0 && !m_send_encoder_source_mode[i] &&
+            !m_send_encoder_turned[i] && !m_send_encoder_longpress_triggered[i] &&
+            now-m_send_encoder_pressed_at[i]>=1.5)
+        {
+          ToggleVisibleSendMute(i); m_send_encoder_longpress_triggered[i]=true;
+        }
+      }
     }
 
     void UpdateSendsDisplay()
@@ -600,7 +635,12 @@ class CSurf_MCU : public IReaperControlSurface
     {
       m_sends_mode=false; m_send_offset=0; m_sends_display_track=NULL;
       m_sends_overlay_until=0.0; m_ltfp_overlay_until=0.0; ResetSendsDisplayCache();
-      for (int i=0;i<8;i++) { m_send_encoder_turned[i]=false; m_send_encoder_pressed_at[i]=0.0; m_send_encoder_longpress_triggered[i]=false; }
+      for (int i=0;i<8;i++)
+      {
+        m_send_encoder_turned[i]=false; m_send_encoder_pressed_at[i]=0.0;
+        m_send_encoder_longpress_triggered[i]=false; m_send_encoder_source_mode[i]=false;
+        m_send_encoder_pending_tap[i]=false; m_send_encoder_released_at[i]=0.0;
+      }
       memset(m_mackie_lasttime,0,sizeof(m_mackie_lasttime));
       memset(m_fader_touchstate,0,sizeof(m_fader_touchstate));
       memset(m_fader_lasttouch,0,sizeof(m_fader_lasttouch));
@@ -772,7 +812,9 @@ class CSurf_MCU : public IReaperControlSurface
 	      if (m_send_encoder_pressed_at[tid]>0.0)
 	      {
 	        if (m_send_encoder_longpress_triggered[tid]) return true;
-	        m_send_encoder_turned[tid]=true; ChangeVisibleSendChannels(tid,direction);
+	        m_send_encoder_turned[tid]=true;
+	        if (m_send_encoder_source_mode[tid]) ChangeVisibleSendSourceChannels(tid,direction);
+	        else ChangeVisibleSendChannels(tid,direction);
 	      }
 	      else
 	      {
@@ -916,12 +958,33 @@ class CSurf_MCU : public IReaperControlSurface
 	  if (m_sends_mode)
 	  {
 	    bool pressed=evt->midi_message[2]>=0x40;
-	    if (pressed) { m_send_encoder_turned[trackid]=false; m_send_encoder_longpress_triggered[trackid]=false; m_send_encoder_pressed_at[trackid]=DaxNowSeconds(); }
+	    if (pressed)
+	    {
+	      double now=DaxNowSeconds();
+	      bool sourceMode=false;
+	      if (m_send_encoder_pending_tap[trackid])
+	      {
+	        if (now-m_send_encoder_released_at[trackid]<=(SEND_DOUBLE_PUSH_INTERVAL/1000.0)) sourceMode=true;
+	        else CycleVisibleSendMode(trackid);
+	        m_send_encoder_pending_tap[trackid]=false;
+	      }
+	      m_send_encoder_source_mode[trackid]=sourceMode;
+	      m_send_encoder_turned[trackid]=false;
+	      m_send_encoder_longpress_triggered[trackid]=false;
+	      m_send_encoder_pressed_at[trackid]=now;
+	    }
 	    else
 	    {
+	      double now=DaxNowSeconds();
 	      m_send_encoder_pressed_at[trackid]=0.0;
-	      if (!m_send_encoder_turned[trackid] && !m_send_encoder_longpress_triggered[trackid]) CycleVisibleSendMode(trackid);
+	      if (!m_send_encoder_source_mode[trackid] && !m_send_encoder_turned[trackid] &&
+	          !m_send_encoder_longpress_triggered[trackid])
+	      {
+	        m_send_encoder_pending_tap[trackid]=true;
+	        m_send_encoder_released_at[trackid]=now;
+	      }
 	      m_send_encoder_longpress_triggered[trackid]=false;
+	      m_send_encoder_source_mode[trackid]=false;
 	    }
 	    return true;
 	  }

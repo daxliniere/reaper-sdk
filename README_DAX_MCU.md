@@ -18,7 +18,9 @@ In REAPER's control-surface list, select **Mackie Control Universal (Dax Liniere
 - In Sends Mode, turn a V-pot for send level and turn JOG to move through sends one at a time.
 - Tap a V-pot to cycle Post-Fader (Post-Pan), Pre-Fader (Post-FX), and Pre-Fader (Pre-FX).
 - Hold a V-pot for 1.5 seconds to toggle send mute. A muted send shows `MUTED` in place of its value.
-- Hold and turn a V-pot to change the receiving channel pair; the destination track's channel count grows when required. The display shows the complete source-to-destination route.
+- Hold and turn a V-pot to change the receiving channel pair; the destination track's channel count grows when required.
+- Double-push a V-pot, hold the second push, and turn it to change the sending channel pair; the source track's channel count grows when required.
+- Channel changes display the complete source-to-destination route.
 - **Notice time** controls temporary display messages (0.1-10.0 seconds; default 1.5).
 - Shutdown messages are semicolon-separated; one is selected when the surface closes.
 - Outside Sends Mode, JOG retains stock movement. JOG push toggles Scrub unless the master fader is in Last-touched FX parameter mode.
