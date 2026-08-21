@@ -7,7 +7,7 @@
 //
 // Generated from the TEXTINCLUDE 2 resource.
 //
-#include "afxres.h"
+#include <winres.h>
 
 /////////////////////////////////////////////////////////////////////////////
 #undef APSTUDIO_READONLY_SYMBOLS
@@ -70,15 +70,15 @@ BEGIN
                     IDC_EDIT2_LBL2,108,58,148,8
 END
 
-IDD_SURFACEEDIT_MCU1 DIALOG DISCARDABLE  0, 0, 268, 103
+IDD_SURFACEEDIT_MCU1 DIALOG DISCARDABLE  0, 0, 365, 194
 STYLE DS_CONTROL | WS_CHILD
 FONT 8, "MS Shell Dlg"
 BEGIN
     RTEXT           "MIDI input:",IDC_STATIC,23,6,56,8
-    COMBOBOX        IDC_COMBO2,81,4,181,105,CBS_DROPDOWNLIST | WS_VSCROLL | 
+    COMBOBOX        IDC_COMBO2,81,4,270,105,CBS_DROPDOWNLIST | WS_VSCROLL |
                     WS_TABSTOP
     RTEXT           "MIDI output:",IDC_STATIC,23,23,56,8
-    COMBOBOX        IDC_COMBO3,81,21,181,105,CBS_DROPDOWNLIST | WS_VSCROLL | 
+    COMBOBOX        IDC_COMBO3,81,21,270,105,CBS_DROPDOWNLIST | WS_VSCROLL |
                     WS_TABSTOP
     RTEXT           "Surface offset (tracks):",IDC_EDIT1_LBL,4,37,72,8
     EDITTEXT        IDC_EDIT1,81,36,24,12,ES_AUTOHSCROLL
@@ -86,14 +86,25 @@ BEGIN
     EDITTEXT        IDC_EDIT2,80,50,24,12,ES_AUTOHSCROLL
     LTEXT           "(leave at 9 unless you know what you're doing)",
                     IDC_EDIT2_LBL2,108,52,148,8
+    CONTROL         "Enable control surface",IDC_ENABLE_SURFACE,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,4,67,93,10
     CONTROL         "Ignore fader moves when fader is not being touched",
-                    IDC_CHECK1,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,4,67,
-                    177,10
+                    IDC_CHECK1,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,105,67,190,10
     CONTROL         "Map F1-F8 to go to markers",IDC_CHECK2,"Button",
-                    BS_AUTOCHECKBOX | WS_TABSTOP,4,78,102,10
-    CONTROL         "Ignore global bank offsets (always map to tracks specified)",
-                    IDC_CHECK3,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,4,89,
-                    199,10
+                    BS_AUTOCHECKBOX | WS_TABSTOP,4,79,120,10
+    GROUPBOX        "Master fader",IDC_STATIC,4,92,176,62
+    CONTROL         "Master volume",IDC_MASTER_VOLUME,"Button",BS_AUTORADIOBUTTON,10,104,70,10
+    CONTROL         "Last-touched FX parameter",IDC_MASTER_LTFP,"Button",BS_AUTORADIOBUTTON,10,116,110,10
+    LTEXT           "Tap JOG wheel to capture current FX parameter",IDC_STATIC,18,127,155,8
+    CONTROL         "Disabled",IDC_MASTER_DISABLED,"Button",BS_AUTORADIOBUTTON,10,140,50,10
+    GROUPBOX        "Record arm buttons",IDC_STATIC,185,92,176,62
+    CONTROL         "Record arm",IDC_RECARM_NORMAL,"Button",BS_AUTORADIOBUTTON,191,106,60,10
+    CONTROL         "Bank select",IDC_RECARM_BANK,"Button",BS_AUTORADIOBUTTON,191,120,60,10
+    LTEXT           "Notice time:",IDC_STATIC,4,159,45,8
+    EDITTEXT        IDC_NOTICE_TIME,51,157,30,12,ES_AUTOHSCROLL
+    LTEXT           "secs",IDC_STATIC,85,159,20,8
+    LTEXT           "Shutdown message(s), separated by semicolons:",IDC_STATIC,4,172,170,8
+    EDITTEXT        IDC_SHUTDOWN_MESSAGE,177,170,184,12,ES_AUTOHSCROLL
+    LTEXT           "v0.3.0-dev",IDC_VERSION,4,185,60,8
 END
 
 IDD_SURFACEEDIT_OSC DIALOG DISCARDABLE  0, 0, 268, 133

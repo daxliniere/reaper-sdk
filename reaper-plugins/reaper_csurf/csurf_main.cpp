@@ -14,19 +14,8 @@
 
 #include "../../WDL/setthreadname.h"
 
-extern reaper_csurf_reg_t 
-  csurf_bcf_reg,
-  csurf_console1_reg,
-  csurf_faderport_reg,
-  csurf_faderport2_reg,
-  csurf_hui_reg,
-  csurf_mcu_reg,
-  csurf_mcuex_reg,
-  csurf_tranzport_reg,
-  csurf_alphatrack_reg,
-  csurf_01X_reg,
-  csurf_osc_reg,
-  csurf_www_reg;
+extern reaper_csurf_reg_t csurf_mcu_reg, csurf_mcuex_reg;
+extern int DaxLoadAPI(void *(*getFunc)(const char *));
 
 
 REAPER_PLUGIN_HINSTANCE g_hInst; // used for dialogs, if any
@@ -310,6 +299,8 @@ REAPER_PLUGIN_DLL_EXPORT int REAPER_PLUGIN_ENTRYPOINT(REAPER_PLUGIN_HINSTANCE hI
   if (!rec || rec->caller_version != REAPER_PLUGIN_VERSION || !rec->GetFunc)
       return 0;
 
+  if (DaxLoadAPI(rec->GetFunc)) return 0;
+
   g_hwnd = rec->hwnd_main;
   int errcnt=0;
 #define IMPAPI(x) if (!((*((void **)&(x)) = (void *)rec->GetFunc(#x)))) errcnt++;
@@ -552,28 +543,8 @@ REAPER_PLUGIN_DLL_EXPORT int REAPER_PLUGIN_ENTRYPOINT(REAPER_PLUGIN_HINSTANCE hI
 
   Plugin_Register = rec->Register;
 
-  rec->Register("csurf",&csurf_bcf_reg);
-  rec->Register("csurf",&csurf_faderport_reg);
-  rec->Register("csurf",&csurf_faderport2_reg);
-  rec->Register("csurf",&csurf_hui_reg);
   rec->Register("csurf",&csurf_mcu_reg);
   rec->Register("csurf",&csurf_mcuex_reg);
-  rec->Register("csurf",&csurf_tranzport_reg);
-  rec->Register("csurf",&csurf_console1_reg);
-  rec->Register("csurf",&csurf_alphatrack_reg);
-  rec->Register("csurf",&csurf_01X_reg);
-  rec->Register("csurf",&csurf_osc_reg);
-  rec->Register("csurf",&csurf_www_reg);
-
-  rec->Register("osclocalmsgfunc", (void*)OscLocalMessageToHost);
-
-  rec->Register("createlocaloschandler", (void*)CreateLocalOscHandler);
-  rec->Register("sendlocaloscmessage", (void*)SendLocalOscMessage);
-  rec->Register("destroylocaloschandler", (void*)DestroyLocalOscHandler);
-
-  rec->Register("ext_name",(void *)"Control surface/OSC support");
-  rec->Register("ext_vendor",(void *)"Cockos");
-  rec->Register("ext_url",(void *)"https://github.com/justinfrankel/reaper-sdk");
 
   IMPORT_LOCALIZE_RPLUG(rec)
 

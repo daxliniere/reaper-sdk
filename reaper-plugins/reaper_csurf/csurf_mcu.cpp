@@ -6,8 +6,20 @@
 */
 
 
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
 #include "csurf.h"
+#include "dax_api.h"
 #include "../../WDL/ptrlist.h"
+#include <algorithm>
+#include <string>
+#include <vector>
+
+static double DaxNowSeconds()
+{
+  return (double)GetTickCount64() / 1000.0;
+}
 
 /*
 MCU documentation:
@@ -108,11 +120,7 @@ PC=>MCU:
 
 */
 
-#ifdef SPACELAB
-#define SPLASH_MESSAGE "Spacelab Recording Studio"
-#else
-#define SPLASH_MESSAGE "REAPER! Initializing... Please wait..."
-#endif
+#define SPLASH_MESSAGE "Dax Liniere MCU"
 
 static double int14ToVol(unsigned char msb, unsigned char lsb)
 {
@@ -195,7 +203,22 @@ struct ScheduledAction {
 
 #define CONFIG_FLAG_FADER_TOUCH_MODE 1
 #define CONFIG_FLAG_MAPF1F8TOMARKERS 2
-#define CONFIG_FLAG_NOBANKOFFSET 4
+#define CONFIG_FLAG_LEGACY_NOBANKOFFSET 4 // Reserved for compatibility; intentionally ignored.
+#define CONFIG_FLAG_MASTER_FADER_DISABLED 8
+#define CONFIG_FLAG_SURFACE_DISABLED 16
+#define CONFIG_FLAG_MASTER_FADER_LTFP 32
+#define CONFIG_FLAG_RECARM_BANK 64
+
+#define DAX_MCU_VERSION "0.3.0-dev"
+
+static const char DEFAULT_SHUTDOWN_MESSAGES[] =
+  "You are an infinite being.;Begin from elsewhere.;Let the edges soften.;"
+  "Meaning arrives later.;Trust the unfinished.;Silence is valid.;"
+  "Remove the obvious.;Another form is possible.;The machine remembers nothing.;"
+  "You were never separate.;Follow the smallest signal.;The answer changed.;"
+  "Notice what remains.;Return without repeating.;Everything is becoming.;"
+  "The interval matters.;Forget the intended use.;Continue in another medium.;"
+  "The centre is optional.;Reality permits revisions.";
 
 #define DOUBLE_CLICK_INTERVAL 250 /* ms */
 
@@ -244,6 +267,16 @@ struct SelectedTrack {
 
 class CSurf_MCU : public IReaperControlSurface
 {
+    enum class FocusedFxType { None, Track, Take };
+    struct FocusedFxTarget {
+      FocusedFxType type{FocusedFxType::None};
+      MediaTrack *track{};
+      MediaItem_Take *take{};
+      int fx{-1};
+      int param{-1};
+      GUID guid{};
+    };
+
     bool m_is_mcuex;
     int m_midi_in_dev,m_midi_out_dev;
     int m_offset, m_size;
@@ -257,6 +290,20 @@ class CSurf_MCU : public IReaperControlSurface
     int m_mackie_modifiers;
     int m_cfg_flags;  //CONFIG_FLAG_FADER_TOUCH_MODE etc
     int m_last_miscstate; // &1=metronome
+
+    FocusedFxTarget m_focused_fx{};
+    bool m_sends_mode{};
+    int m_send_offset{};
+    MediaTrack *m_sends_display_track{};
+    char m_sends_display_cache[112]{};
+    int m_sends_ring_cache[8]{};
+    bool m_send_encoder_turned[8]{};
+    double m_send_encoder_pressed_at[8]{};
+    bool m_send_encoder_longpress_triggered[8]{};
+    double m_sends_overlay_until{};
+    double m_ltfp_overlay_until{};
+    double m_notice_time{1.5};
+    std::string m_shutdown_messages{DEFAULT_SHUTDOWN_MESSAGES};
 
     char m_fader_touchstate[256];
     unsigned int m_fader_lasttouch[256]; // m_fader_touchstate changes will clear this, moves otherwise set it. if set to -1, then totally disabled
@@ -303,11 +350,257 @@ class CSurf_MCU : public IReaperControlSurface
 
     int GetBankOffset() const
     {
-      return (m_cfg_flags&CONFIG_FLAG_NOBANKOFFSET) ? (m_offset + 1) : (m_offset + 1 + m_allmcus_bank_offset);
+      return m_offset + 1 + m_allmcus_bank_offset;
+    }
+
+    bool IsFocusedFxValid() const
+    {
+      GUID *guid=NULL;
+      int count=0;
+      if (m_focused_fx.type == FocusedFxType::Track)
+      {
+        if (!m_focused_fx.track || !ValidatePtr2(NULL,m_focused_fx.track,"MediaTrack*")) return false;
+        guid=TrackFX_GetFXGUID(m_focused_fx.track,m_focused_fx.fx);
+        count=TrackFX_GetNumParams(m_focused_fx.track,m_focused_fx.fx);
+      }
+      else if (m_focused_fx.type == FocusedFxType::Take)
+      {
+        if (!m_focused_fx.take || !ValidatePtr2(NULL,m_focused_fx.take,"MediaItem_Take*")) return false;
+        guid=TakeFX_GetFXGUID(m_focused_fx.take,m_focused_fx.fx);
+        count=TakeFX_GetNumParams(m_focused_fx.take,m_focused_fx.fx);
+      }
+      return guid && !memcmp(guid,&m_focused_fx.guid,sizeof(GUID)) &&
+             m_focused_fx.param >= 0 && m_focused_fx.param < count;
+    }
+
+    double GetFocusedFxValue() const
+    {
+      if (!IsFocusedFxValid()) return -1.0;
+      return m_focused_fx.type == FocusedFxType::Track
+        ? TrackFX_GetParamNormalized(m_focused_fx.track,m_focused_fx.fx,m_focused_fx.param)
+        : TakeFX_GetParamNormalized(m_focused_fx.take,m_focused_fx.fx,m_focused_fx.param);
+    }
+
+    bool SetFocusedFxValue(double value)
+    {
+      if (!IsFocusedFxValid()) return false;
+      value=std::max(0.0,std::min(1.0,value));
+      return m_focused_fx.type == FocusedFxType::Track
+        ? TrackFX_SetParamNormalized(m_focused_fx.track,m_focused_fx.fx,m_focused_fx.param,value)
+        : TakeFX_SetParamNormalized(m_focused_fx.take,m_focused_fx.fx,m_focused_fx.param,value);
+    }
+
+    void ShowFocusedFxOverlay(const FocusedFxTarget &target, bool connected)
+    {
+      if (!m_midiout || m_is_mcuex) return;
+      char track[256]={0}, fx[256]={0}, parm[256]={0}, msg[113]={0}, screen[113];
+      if (!GetTrackName(target.track,track,sizeof(track))) strcpy(track,"Track");
+      if (target.type == FocusedFxType::Track)
+      {
+        TrackFX_GetFXName(target.track,target.fx,fx,sizeof(fx));
+        TrackFX_GetParamName(target.track,target.fx,target.param,parm,sizeof(parm));
+      }
+      else
+      {
+        TakeFX_GetFXName(target.take,target.fx,fx,sizeof(fx));
+        TakeFX_GetParamName(target.take,target.fx,target.param,parm,sizeof(parm));
+      }
+      snprintf(msg,sizeof(msg),"%s%d %s: %s %s",connected?"":"Disconnected: ",
+               CSurf_TrackToID(target.track,false),track,fx,parm);
+      memset(screen,' ',112); screen[112]=0;
+      memcpy(screen,msg,std::min((size_t)112,strlen(msg)));
+      UpdateMackieDisplay(0,screen,56);
+      UpdateMackieDisplay(56,screen+56,56);
+      m_ltfp_overlay_until=DaxNowSeconds()+m_notice_time;
+      if (m_sends_mode) m_sends_overlay_until=m_ltfp_overlay_until;
+    }
+
+    bool CaptureLastTouchedFx()
+    {
+      int trackidx=0,itemidx=-1,takeidx=-1,fxidx=-1,parm=-1;
+      if (!GetTouchedOrFocusedFX(0,&trackidx,&itemidx,&takeidx,&fxidx,&parm)) return false;
+      FocusedFxTarget target;
+      target.track=trackidx < 0 ? GetMasterTrack(NULL) : GetTrack(NULL,trackidx);
+      target.fx=fxidx; target.param=parm;
+      if (!target.track) return false;
+      GUID *guid=NULL;
+      if (itemidx >= 0)
+      {
+        MediaItem *item=GetTrackMediaItem(target.track,itemidx);
+        target.take=item ? GetMediaItemTake(item,takeidx) : NULL;
+        target.type=FocusedFxType::Take;
+        if (!target.take || parm < 0 || parm >= TakeFX_GetNumParams(target.take,fxidx)) return false;
+        guid=TakeFX_GetFXGUID(target.take,fxidx);
+      }
+      else
+      {
+        target.type=FocusedFxType::Track;
+        if (parm < 0 || parm >= TrackFX_GetNumParams(target.track,fxidx)) return false;
+        guid=TrackFX_GetFXGUID(target.track,fxidx);
+      }
+      if (!guid) return false;
+      memcpy(&target.guid,guid,sizeof(GUID));
+      if (IsFocusedFxValid() && target.type==m_focused_fx.type && target.param==m_focused_fx.param &&
+          !memcmp(&target.guid,&m_focused_fx.guid,sizeof(GUID)))
+      {
+        ShowFocusedFxOverlay(target,false); m_focused_fx=FocusedFxTarget(); m_vol_lastpos[8]=-1; return true;
+      }
+      m_focused_fx=target; m_vol_lastpos[8]=-1; ShowFocusedFxOverlay(target,true); return true;
+    }
+
+    void UpdateFocusedFxFader()
+    {
+      if (!m_midiout || m_is_mcuex || !(m_cfg_flags&CONFIG_FLAG_MASTER_FADER_LTFP) || m_fader_touchstate[8]) return;
+      double value=GetFocusedFxValue(); if (value < 0.0) return;
+      int fader=std::max(0,std::min(16383,(int)(value*16383.0+0.5)));
+      if (m_vol_lastpos[8] != fader)
+      {
+        m_vol_lastpos[8]=fader;
+        m_midiout->Send(0xe8,fader&0x7f,(fader>>7)&0x7f,-1);
+      }
+    }
+
+    void ResetSendsDisplayCache()
+    {
+      memset(m_sends_display_cache,0xff,sizeof(m_sends_display_cache));
+      memset(m_sends_ring_cache,0xff,sizeof(m_sends_ring_cache));
+    }
+
+    MediaTrack *GetSendsTrack() { return GetSelectedTrack(NULL,0); }
+
+    bool GetVisibleSend(int slot, MediaTrack **trackOut, int *sendOut, MediaTrack **destOut=NULL)
+    {
+      MediaTrack *track=GetSendsTrack(); int send=m_send_offset+slot;
+      if (!track || slot<0 || slot>=8 || send<0 || send>=GetTrackNumSends(track,0)) return false;
+      if (trackOut) *trackOut=track; if (sendOut) *sendOut=send;
+      if (destOut) *destOut=(MediaTrack*)(INT_PTR)GetTrackSendInfo_Value(track,0,send,"P_DESTTRACK");
+      return true;
+    }
+
+    void ShowSendsOverlay(MediaTrack *track, int send, const char *value)
+    {
+      MediaTrack *dest=(MediaTrack*)(INT_PTR)GetTrackSendInfo_Value(track,0,send,"P_DESTTRACK");
+      char name[256]={0}, msg[113]={0}, screen[113];
+      if (!dest || !GetTrackName(dest,name,sizeof(name))) snprintf(name,sizeof(name),"Send %d",send+1);
+      snprintf(msg,sizeof(msg),"%s: %s",name,value);
+      memset(screen,' ',112); screen[112]=0; memcpy(screen,msg,std::min((size_t)112,strlen(msg)));
+      UpdateMackieDisplay(0,screen,56); UpdateMackieDisplay(56,screen+56,56);
+      m_sends_overlay_until=DaxNowSeconds()+m_notice_time; ResetSendsDisplayCache();
+    }
+
+    void FormatChannelPair(int value, char *out, int size)
+    {
+      if (value<0) { snprintf(out,size,"none"); return; }
+      int first=(value&0x3ff)+1;
+      if (value&0x400) snprintf(out,size,"%d",first);
+      else snprintf(out,size,"%d+%d",first,first+1);
+    }
+
+    void ShowSendRoute(MediaTrack *track, int send)
+    {
+      MediaTrack *dest=(MediaTrack*)(INT_PTR)GetTrackSendInfo_Value(track,0,send,"P_DESTTRACK");
+      if (!dest) return;
+      char src[256]={0}, dst[256]={0}, sc[16], dc[16], msg[113]={0}, screen[113];
+      GetTrackName(track,src,sizeof(src)); GetTrackName(dest,dst,sizeof(dst));
+      FormatChannelPair((int)GetTrackSendInfo_Value(track,0,send,"I_SRCCHAN"),sc,sizeof(sc));
+      FormatChannelPair((int)GetTrackSendInfo_Value(track,0,send,"I_DSTCHAN"),dc,sizeof(dc));
+      snprintf(msg,sizeof(msg),"%d: %.32s %s -> %s %d: %.32s",CSurf_TrackToID(track,false),src,sc,dc,CSurf_TrackToID(dest,false),dst);
+      memset(screen,' ',112); screen[112]=0; memcpy(screen,msg,std::min((size_t)112,strlen(msg)));
+      UpdateMackieDisplay(0,screen,56); UpdateMackieDisplay(56,screen+56,56);
+      m_sends_overlay_until=DaxNowSeconds()+m_notice_time; ResetSendsDisplayCache();
+    }
+
+    void CycleVisibleSendMode(int slot)
+    {
+      MediaTrack *track=NULL; int send=0; if (!GetVisibleSend(slot,&track,&send)) return;
+      const int modes[]={0,3,1}; const char *labels[]={"Post-Fader (Post-Pan)","Pre-Fader (Post-FX)","Pre-Fader (Pre-FX)"};
+      int current=(int)GetTrackSendInfo_Value(track,0,send,"I_SENDMODE"), next=0;
+      for (int i=0;i<3;i++) if (modes[i]==current) { next=(i+1)%3; break; }
+      if (SetTrackSendInfo_Value(track,0,send,"I_SENDMODE",modes[next])) ShowSendsOverlay(track,send,labels[next]);
+    }
+
+    void ToggleVisibleSendMute(int slot)
+    {
+      MediaTrack *track=NULL; int send=0; if (!GetVisibleSend(slot,&track,&send)) return;
+      bool muted=GetTrackSendInfo_Value(track,0,send,"B_MUTE")!=0.0;
+      if (SetTrackSendInfo_Value(track,0,send,"B_MUTE",!muted)) ShowSendsOverlay(track,send,!muted?"MUTED":"UNMUTED");
+    }
+
+    void ChangeVisibleSendChannels(int slot, int direction)
+    {
+      MediaTrack *track=NULL,*dest=NULL; int send=0;
+      if (!GetVisibleSend(slot,&track,&send,&dest) || !dest) return;
+      int current=(int)GetTrackSendInfo_Value(track,0,send,"I_DSTCHAN");
+      int oldoff=current&0x3ff, newoff=std::max(0,std::min(126,oldoff+direction));
+      if (newoff==oldoff && !(current&0x400)) return;
+      int nch=std::max(2,(int)GetMediaTrackInfo_Value(dest,"I_NCHAN"));
+      int required=(newoff+3)&~1;
+      if (required>nch && !SetMediaTrackInfo_Value(dest,"I_NCHAN",required)) return;
+      if (SetTrackSendInfo_Value(track,0,send,"I_DSTCHAN",newoff)) ShowSendRoute(track,send);
+    }
+
+    void SetSendsMode(bool enabled)
+    {
+      if (m_sends_mode==enabled) return;
+      m_sends_mode=enabled; m_send_offset=0; m_sends_display_track=NULL; m_sends_overlay_until=0.0;
+      ResetSendsDisplayCache();
+      for (int i=0;i<8;i++) { m_send_encoder_turned[i]=false; m_send_encoder_pressed_at[i]=0.0; m_send_encoder_longpress_triggered[i]=false; }
+      if (m_midiout && !m_is_mcuex) m_midiout->Send(0x90,0x54,enabled?0x7f:0,-1);
+      if (!enabled && m_midiout) { UpdateMackieDisplay(0,"",56); UpdateMackieDisplay(56,"",56); }
+      CSurf_ResetAllCachedVolPanStates(); TrackList_UpdateAllExternalSurfaces();
+    }
+
+    void ChangeSendOffset(int direction)
+    {
+      MediaTrack *track=GetSendsTrack(); int count=track?GetTrackNumSends(track,0):0;
+      m_send_offset=std::max(0,std::min(std::max(0,count-8),m_send_offset+direction)); ResetSendsDisplayCache();
+    }
+
+    void ProcessSendLongPresses(double now)
+    {
+      if (!m_sends_mode) return;
+      for (int i=0;i<8;i++) if (m_send_encoder_pressed_at[i]>0.0 && !m_send_encoder_turned[i] &&
+          !m_send_encoder_longpress_triggered[i] && now-m_send_encoder_pressed_at[i]>=1.5)
+      { ToggleVisibleSendMute(i); m_send_encoder_longpress_triggered[i]=true; }
+    }
+
+    void UpdateSendsDisplay()
+    {
+      if (!m_sends_mode || !m_midiout || m_is_mcuex) return;
+      double now=DaxNowSeconds(); if (m_sends_overlay_until>now) return;
+      if (m_sends_overlay_until!=0.0) { m_sends_overlay_until=0.0; ResetSendsDisplayCache(); }
+      MediaTrack *track=GetSendsTrack();
+      if (track!=m_sends_display_track) { m_sends_display_track=track; m_send_offset=0; ResetSendsDisplayCache(); }
+      int count=track?GetTrackNumSends(track,0):0;
+      m_send_offset=std::min(m_send_offset,std::max(0,count-8));
+      char display[112]; memset(display,' ',sizeof(display));
+      if (!track) memcpy(display,"No track selected",17);
+      else if (!count) memcpy(display,"No sends present",16);
+      for (int slot=0;slot<8;slot++)
+      {
+        int send=m_send_offset+slot, ring=0;
+        if (track && send<count)
+        {
+          MediaTrack *dest=(MediaTrack*)(INT_PTR)GetTrackSendInfo_Value(track,0,send,"P_DESTTRACK");
+          char name[256]={0}; if (!dest || !GetTrackName(dest,name,sizeof(name))) snprintf(name,sizeof(name),"Send %d",send+1);
+          memcpy(display+slot*7,name,std::min((size_t)6,strlen(name)));
+          double vol=GetTrackSendInfo_Value(track,0,send,"D_VOL"); char val[16]={0};
+          if (GetTrackSendInfo_Value(track,0,send,"B_MUTE")!=0.0) strcpy(val,"MUTED");
+          else if (vol<=0.0000001) strcpy(val,"-inf"); else snprintf(val,sizeof(val),"%.1f",VAL2DB(vol));
+          memcpy(display+56+slot*7,val,std::min((size_t)6,strlen(val)));
+          ring=1+((volToChar(vol)*11)>>7);
+        }
+        if (m_sends_ring_cache[slot]!=ring) { m_sends_ring_cache[slot]=ring; m_midiout->Send(0xb0,0x30+slot,ring,-1); }
+      }
+      for (int pos=0;pos<112;pos+=7) if (memcmp(m_sends_display_cache+pos,display+pos,7))
+      { UpdateMackieDisplay(pos,display+pos,7); memcpy(m_sends_display_cache+pos,display+pos,7); }
     }
     
     void MCUReset()
     {
+      m_sends_mode=false; m_send_offset=0; m_sends_display_track=NULL;
+      m_sends_overlay_until=0.0; m_ltfp_overlay_until=0.0; ResetSendsDisplayCache();
+      for (int i=0;i<8;i++) { m_send_encoder_turned[i]=false; m_send_encoder_pressed_at[i]=0.0; m_send_encoder_longpress_triggered[i]=false; }
       memset(m_mackie_lasttime,0,sizeof(m_mackie_lasttime));
       memset(m_fader_touchstate,0,sizeof(m_fader_touchstate));
       memset(m_fader_lasttouch,0,sizeof(m_fader_lasttouch));
@@ -425,6 +718,16 @@ class CSurf_MCU : public IReaperControlSurface
     bool OnFaderMove(MIDI_event_t *evt) {
       if ((evt->midi_message[0]&0xf0) == 0xe0) // volume fader move
       {
+        int physical=evt->midi_message[0]&0xf;
+        if (physical==8 && (m_cfg_flags&CONFIG_FLAG_MASTER_FADER_DISABLED)) return true;
+        int raw=evt->midi_message[1] | (evt->midi_message[2]<<7);
+        if (physical==8 && (m_cfg_flags&CONFIG_FLAG_MASTER_FADER_LTFP))
+        {
+          double current=GetFocusedFxValue();
+          int currentRaw=current<0.0?-1:(int)(current*16383.0+0.5);
+          if (currentRaw!=raw) SetFocusedFxValue(raw/16383.0);
+          return true;
+        }
         m_fader_lastmove = timeGetTime();
 
         int tid=evt->midi_message[0]&0xf;
@@ -462,6 +765,22 @@ class CSurf_MCU : public IReaperControlSurface
 
 	    m_pan_lasttouch[tid&7]=timeGetTime();
 
+	    if (m_sends_mode)
+	    {
+	      int amount=evt->midi_message[2]&0x3f; if (!amount) return true;
+	      int direction=(evt->midi_message[2]&0x40)?-1:1;
+	      if (m_send_encoder_pressed_at[tid]>0.0)
+	      {
+	        if (m_send_encoder_longpress_triggered[tid]) return true;
+	        m_send_encoder_turned[tid]=true; ChangeVisibleSendChannels(tid,direction);
+	      }
+	      else
+	      {
+	        MediaTrack *track=NULL; int send=0;
+	        if (GetVisibleSend(tid,&track,&send)) CSurf_OnSendVolumeChange(track,send,direction*(amount/31.0)*11.0,true);
+	      }
+	      return true;
+	    }
 	    if (tid == 8) tid=0; // adjust for master
 	    else tid+=GetBankOffset();
 	    MediaTrack *tr=CSurf_TrackFromID(tid,g_csurf_mcpmode);
@@ -487,6 +806,12 @@ class CSurf_MCU : public IReaperControlSurface
     if ( (evt->midi_message[0]&0xf0) == 0xb0 &&
          evt->midi_message[1] == 0x3c ) // jog wheel
      {
+       if (m_sends_mode)
+       {
+         if (evt->midi_message[2]>=0x41) ChangeSendOffset(-1);
+         else if (evt->midi_message[2]>0 && evt->midi_message[2]<0x40) ChangeSendOffset(1);
+         return true;
+       }
        if (evt->midi_message[2] >= 0x41)  
          CSurf_OnRewFwd(m_mackie_arrow_states&128, 0x40 - (int)evt->midi_message[2]);
        else if (evt->midi_message[2] > 0 && evt->midi_message[2] < 0x40)  
@@ -588,7 +913,21 @@ class CSurf_MCU : public IReaperControlSurface
 	bool OnRotaryEncoderPush( MIDI_event_t *evt ) {
 	  int trackid=evt->midi_message[1]-0x20;
 	  m_pan_lasttouch[trackid]=timeGetTime();
+	  if (m_sends_mode)
+	  {
+	    bool pressed=evt->midi_message[2]>=0x40;
+	    if (pressed) { m_send_encoder_turned[trackid]=false; m_send_encoder_longpress_triggered[trackid]=false; m_send_encoder_pressed_at[trackid]=DaxNowSeconds(); }
+	    else
+	    {
+	      m_send_encoder_pressed_at[trackid]=0.0;
+	      if (!m_send_encoder_turned[trackid] && !m_send_encoder_longpress_triggered[trackid]) CycleVisibleSendMode(trackid);
+	      m_send_encoder_longpress_triggered[trackid]=false;
+	    }
+	    return true;
+	  }
+	  return true; // Deliberately do not reset pan/volume outside Sends Mode.
 
+	  /* Stock reset behaviour intentionally disabled.
 	  trackid+=GetBankOffset();
 
 	  MediaTrack *tr=CSurf_TrackFromID(trackid,g_csurf_mcpmode);
@@ -604,9 +943,17 @@ class CSurf_MCU : public IReaperControlSurface
 	    }
 	  }
 	  return true;
+	  */
 	}
 	
 	bool OnRecArm( MIDI_event_t *evt ) {
+	  if (m_cfg_flags&CONFIG_FLAG_RECARM_BANK)
+	  {
+	    int bank=evt->midi_message[1];
+	    m_allmcus_bank_offset=std::max(0,bank*8);
+	    TrackList_UpdateAllExternalSurfaces();
+	    return true;
+	  }
 	  int tid=evt->midi_message[1];
 	  tid+=GetBankOffset();
 	  MediaTrack *tr=CSurf_TrackFromID(tid,g_csurf_mcpmode);
@@ -694,7 +1041,7 @@ class CSurf_MCU : public IReaperControlSurface
 	}
 	
 	bool OnMarker( MIDI_event_t *evt ) {
-    SendMessage(g_hwnd,WM_COMMAND,IsKeyDown(VK_SHIFT)?ID_INSERT_MARKERRGN:ID_INSERT_MARKER,0);
+    SetSendsMode(!m_sends_mode);
     return true;
 	}
 	
@@ -742,6 +1089,7 @@ class CSurf_MCU : public IReaperControlSurface
 	}
 	
 	bool OnScrub( MIDI_event_t *evt ) {
+	  if (m_cfg_flags&CONFIG_FLAG_MASTER_FADER_LTFP) { CaptureLastTouchedFx(); return true; }
     m_mackie_arrow_states^=128;
     if (m_midiout) 
       m_midiout->Send(0x90, 0x65,(m_mackie_arrow_states&128)?0x7f:0,-1);
@@ -814,6 +1162,8 @@ class CSurf_MCU : public IReaperControlSurface
 	bool OnButtonPress( MIDI_event_t *evt ) {
 	  if ( (evt->midi_message[0]&0xf0) != 0x90 )  
 	    return false;
+	  if (evt->midi_message[1]>=0x20 && evt->midi_message[1]<=0x27)
+	    return OnRotaryEncoderPush(evt);
 
 	  static const int nHandlers = 23;
 	  static const int nPressOnlyHandlers = 20;
@@ -920,9 +1270,12 @@ class CSurf_MCU : public IReaperControlSurface
 
 public:
 
-    CSurf_MCU(bool ismcuex, int offset, int size, int indev, int outdev, int cfgflags, int *errStats) 
+    CSurf_MCU(bool ismcuex, int offset, int size, int indev, int outdev, int cfgflags,
+              int noticeMs, const char *shutdownMessages, int *errStats)
     {
       m_cfg_flags=cfgflags;
+      m_notice_time=std::max(100,std::min(10000,noticeMs))/1000.0;
+      if (shutdownMessages && *shutdownMessages) m_shutdown_messages=shutdownMessages;
 
       m_mcu_list.Add(this);
 
@@ -945,10 +1298,11 @@ public:
 
 
       //create midi hardware access
-      m_midiin = m_midi_in_dev >= 0 ? CreateMIDIInput(m_midi_in_dev) : NULL;
-      m_midiout = m_midi_out_dev >= 0 ? CreateThreadedMIDIOutput(CreateMIDIOutput(m_midi_out_dev,false,NULL)) : NULL;
+      bool disabled=(m_cfg_flags&CONFIG_FLAG_SURFACE_DISABLED)!=0;
+      m_midiin = !disabled && m_midi_in_dev >= 0 ? CreateMIDIInput(m_midi_in_dev) : NULL;
+      m_midiout = !disabled && m_midi_out_dev >= 0 ? CreateThreadedMIDIOutput(CreateMIDIOutput(m_midi_out_dev,false,NULL)) : NULL;
 
-      if (errStats)
+      if (errStats && !disabled)
       {
         if (m_midi_in_dev >=0  && !m_midiin) *errStats|=1;
         if (m_midi_out_dev >=0  && !m_midiout) *errStats|=2;
@@ -964,6 +1318,20 @@ public:
       m_selected_tracks = NULL;
     }
     
+    std::string ChooseShutdownMessage() const
+    {
+      std::vector<std::string> choices; size_t start=0;
+      while (start<=m_shutdown_messages.size())
+      {
+        size_t sep=m_shutdown_messages.find(';',start), end=sep==std::string::npos?m_shutdown_messages.size():sep;
+        while (start<end && m_shutdown_messages[start]<=' ') start++;
+        while (end>start && m_shutdown_messages[end-1]<=' ') end--;
+        if (end>start) choices.push_back(m_shutdown_messages.substr(start,end-start));
+        if (sep==std::string::npos) break; start=sep+1;
+      }
+      return choices.empty()?"Goodbye":choices[(size_t)(DaxNowSeconds()*1000000.0)%choices.size()];
+    }
+
     ~CSurf_MCU() 
     {
       m_mcu_list.Delete(m_mcu_list.Find(this));
@@ -991,6 +1359,14 @@ public:
         Sleep(5);
         m_midiout->SendMsg(&evt.evt,-1);
         Sleep(5);
+
+        if (!m_is_mcuex)
+        {
+          std::string message=ChooseShutdownMessage(); char screen[113];
+          memset(screen,' ',112); screen[112]=0;
+          memcpy(screen,message.c_str(),std::min((size_t)112,message.size()));
+          UpdateMackieDisplay(0,screen,56); UpdateMackieDisplay(56,screen+56,56); Sleep(25);
+        }
 
         #elif 0
         char bla[11]={"          "};
@@ -1029,7 +1405,9 @@ public:
     }
     const char *GetConfigString() // string of configuration data
     {
-      snprintf(m_configtmp,sizeof(m_configtmp),"%d %d %d %d %d",m_offset,m_size,m_midi_in_dev,m_midi_out_dev,m_cfg_flags);      
+      static const char hex[]="0123456789ABCDEF"; std::string encoded;
+      for (size_t i=0;i<m_shutdown_messages.size();i++) { unsigned char c=(unsigned char)m_shutdown_messages[i]; encoded+=hex[c>>4]; encoded+=hex[c&15]; }
+      snprintf(m_configtmp,sizeof(m_configtmp),"%d %d %d %d %d %d %s",m_offset,m_size,m_midi_in_dev,m_midi_out_dev,m_cfg_flags,(int)(m_notice_time*1000.0+0.5),encoded.c_str());
       return m_configtmp;
     }
 
@@ -1047,7 +1425,7 @@ public:
     { 
       DWORD now=timeGetTime();
 
-      if ((now - m_frameupd_lastrun) >= (1000/max((*g_config_csurf_rate),1)))
+      if ((now - m_frameupd_lastrun) >= (1000/std::max((*g_config_csurf_rate),1)))
       {
         m_frameupd_lastrun=now;
 
@@ -1059,6 +1437,9 @@ public:
         }
         
         RunOutput(now);
+        UpdateFocusedFxFader();
+        ProcessSendLongPresses(DaxNowSeconds());
+        UpdateSendsDisplay();
       }
 
       if (m_midiin)
@@ -1102,6 +1483,7 @@ public:
 
     void SetTrackListChange() 
     { 
+      if (m_sends_mode || m_ltfp_overlay_until>DaxNowSeconds()) return;
       if (m_midiout)
       {
         int x;
@@ -1161,6 +1543,7 @@ public:
     void SetSurfaceVolume(MediaTrack *trackid, double volume) 
     { 
       FIXID(id)
+      if (id==8 && (m_cfg_flags&(CONFIG_FLAG_MASTER_FADER_DISABLED|CONFIG_FLAG_MASTER_FADER_LTFP))) return;
       if (m_midiout && id >= 0 && id < 256 && id < m_size)
       {
         if (m_flipmode)
@@ -1184,6 +1567,7 @@ public:
 
     void SetSurfacePan(MediaTrack *trackid, double pan) 
     { 
+      if (m_sends_mode) return;
       FIXID(id)
       if (m_midiout && id >= 0 && id < 256 && id < m_size)
       {
@@ -1308,6 +1692,7 @@ public:
 
     void SetSurfaceRecArm(MediaTrack *trackid, bool recarm) 
     { 
+      if (m_cfg_flags&CONFIG_FLAG_RECARM_BANK) return;
       FIXID(id)
       if (m_midiout && id>=0 && id < 256 && id < m_size)
       {
@@ -1337,6 +1722,7 @@ public:
 
     void SetTrackTitle(MediaTrack *trackid, const char *title) 
     {
+      if (m_sends_mode || m_ltfp_overlay_until>DaxNowSeconds()) return;
       FIXID(id)
       if (m_midiout && id >= 0 && id < 8)
       {
@@ -1415,8 +1801,6 @@ public:
     
     void OnTrackSelection(MediaTrack *trackid) 
     { 
-      if (m_cfg_flags&CONFIG_FLAG_NOBANKOFFSET) return; // ignore if not using bank offset
-
       int tid=CSurf_TrackToID(trackid,g_csurf_mcpmode);
       // if no normal MCU's here, then slave it
       int x;
@@ -1424,7 +1808,7 @@ public:
       for (x = 0; x < m_mcu_list.GetSize(); x ++)
       {
         CSurf_MCU *mcu=m_mcu_list.Get(x);
-        if (mcu && !(mcu->m_cfg_flags&CONFIG_FLAG_NOBANKOFFSET))
+        if (mcu)
         {
           if (mcu->m_offset+8 > movesize)
             movesize=mcu->m_offset+8;
@@ -1472,23 +1856,34 @@ public:
   }
 };
 
-static void parseParms(const char *str, int parms[5])
+static int HexValue(char c) { if (c>='0'&&c<='9') return c-'0'; if (c>='A'&&c<='F') return c-'A'+10; if (c>='a'&&c<='f') return c-'a'+10; return -1; }
+
+static void parseParms(const char *str, int parms[6], std::string *messages=NULL)
 {
   parms[0]=0;
   parms[1]=9;
   parms[2]=parms[3]=-1;
   parms[4]=0;
+  parms[5]=1500;
+  if (messages) *messages=DEFAULT_SHUTDOWN_MESSAGES;
 
   const char *p=str;
   if (p)
   {
     int x=0;
-    while (x<5)
+    while (x<6)
     {
       while (*p == ' ') p++;
       if ((*p < '0' || *p > '9') && *p != '-') break;
       parms[x++]=atoi(p);
       while (*p && *p != ' ') p++;
+    }
+    while (*p==' ') p++;
+    if (messages && *p)
+    {
+      std::string decoded;
+      while (p[0]&&p[1]&&p[0]!=' '&&p[1]!=' ') { int hi=HexValue(p[0]),lo=HexValue(p[1]); if (hi<0||lo<0) break; decoded+=(char)((hi<<4)|lo); p+=2; }
+      if (!decoded.empty() && decoded!="Goodbye") *messages=decoded;
     }
   }  
 }
@@ -1693,8 +2088,8 @@ void CSurf_MCU::RunOutput(DWORD now)
 
 static IReaperControlSurface *createFunc(const char *type_string, const char *configString, int *errStats)
 {
-  int parms[5];
-  parseParms(configString,parms);
+  int parms[6]; std::string messages;
+  parseParms(configString,parms,&messages);
 
   static bool init;
   if (!init)
@@ -1703,7 +2098,7 @@ static IReaperControlSurface *createFunc(const char *type_string, const char *co
     g_csurf_mcpmode = !!GetPrivateProfileInt("csurf","mcu_mcp",0,get_ini_file());
   }
 
-  return new CSurf_MCU(!strcmp(type_string,"MCUEX"),parms[0],parms[1],parms[2],parms[3],parms[4],errStats);
+  return new CSurf_MCU(!strcmp(type_string,"MCUEX"),parms[0],parms[1],parms[2],parms[3],parms[4],parms[5],messages.c_str(),errStats);
 }
 
 
@@ -1713,8 +2108,8 @@ static WDL_DLGRET dlgProc(HWND hwndDlg, UINT uMsg, WPARAM wParam, LPARAM lParam)
   {
     case WM_INITDIALOG:
       {
-        int parms[5];
-        parseParms((const char *)lParam,parms);
+        int parms[6]; std::string messages;
+        parseParms((const char *)lParam,parms,&messages);
         WDL_UTF8_HookComboBox(GetDlgItem(hwndDlg, IDC_COMBO2));
         WDL_UTF8_HookComboBox(GetDlgItem(hwndDlg, IDC_COMBO3));
 
@@ -1750,15 +2145,23 @@ static WDL_DLGRET dlgProc(HWND hwndDlg, UINT uMsg, WPARAM wParam, LPARAM lParam)
           CheckDlgButton(hwndDlg,IDC_CHECK1,BST_CHECKED);
         if (parms[4]&CONFIG_FLAG_MAPF1F8TOMARKERS)
           CheckDlgButton(hwndDlg,IDC_CHECK2,BST_CHECKED);
-        if (parms[4]&CONFIG_FLAG_NOBANKOFFSET)
-          CheckDlgButton(hwndDlg,IDC_CHECK3,BST_CHECKED);
+        CheckDlgButton(hwndDlg,IDC_ENABLE_SURFACE,(parms[4]&CONFIG_FLAG_SURFACE_DISABLED)?BST_UNCHECKED:BST_CHECKED);
+        CheckRadioButton(hwndDlg,IDC_MASTER_VOLUME,IDC_MASTER_DISABLED,
+          (parms[4]&CONFIG_FLAG_MASTER_FADER_DISABLED)?IDC_MASTER_DISABLED:
+          (parms[4]&CONFIG_FLAG_MASTER_FADER_LTFP)?IDC_MASTER_LTFP:IDC_MASTER_VOLUME);
+        CheckRadioButton(hwndDlg,IDC_RECARM_NORMAL,IDC_RECARM_BANK,
+          (parms[4]&CONFIG_FLAG_RECARM_BANK)?IDC_RECARM_BANK:IDC_RECARM_NORMAL);
+        char notice[32]; snprintf(notice,sizeof(notice),"%.1f",parms[5]/1000.0);
+        SetDlgItemText(hwndDlg,IDC_NOTICE_TIME,notice);
+        SetDlgItemText(hwndDlg,IDC_SHUTDOWN_MESSAGE,messages.c_str());
+        SetDlgItemText(hwndDlg,IDC_VERSION,"v" DAX_MCU_VERSION);
         
       }
     break;
     case WM_USER+1024:
       if (wParam > 1 && lParam)
       {
-        char tmp[512];
+        char tmp[2048];
 
         int indev=-1, outdev=-1, offs=0, size=9;
         int r=SendDlgItemMessage(hwndDlg,IDC_COMBO2,CB_GETCURSEL,0,0);
@@ -1781,10 +2184,17 @@ static WDL_DLGRET dlgProc(HWND hwndDlg, UINT uMsg, WPARAM wParam, LPARAM lParam)
           cflags|=CONFIG_FLAG_FADER_TOUCH_MODE;
         if (IsDlgButtonChecked(hwndDlg,IDC_CHECK2))
           cflags|=CONFIG_FLAG_MAPF1F8TOMARKERS;
-        if (IsDlgButtonChecked(hwndDlg,IDC_CHECK3))
-          cflags|=CONFIG_FLAG_NOBANKOFFSET;
-
-        snprintf(tmp,sizeof(tmp),"%d %d %d %d %d",offs,size,indev,outdev,cflags);
+        if (!IsDlgButtonChecked(hwndDlg,IDC_ENABLE_SURFACE)) cflags|=CONFIG_FLAG_SURFACE_DISABLED;
+        if (IsDlgButtonChecked(hwndDlg,IDC_MASTER_DISABLED)) cflags|=CONFIG_FLAG_MASTER_FADER_DISABLED;
+        if (IsDlgButtonChecked(hwndDlg,IDC_MASTER_LTFP)) cflags|=CONFIG_FLAG_MASTER_FADER_LTFP;
+        if (IsDlgButtonChecked(hwndDlg,IDC_RECARM_BANK)) cflags|=CONFIG_FLAG_RECARM_BANK;
+        char noticeText[32]={0}; GetDlgItemText(hwndDlg,IDC_NOTICE_TIME,noticeText,sizeof(noticeText));
+        int noticeMs=(int)(atof(noticeText)*1000.0+0.5); noticeMs=std::max(100,std::min(10000,noticeMs));
+        char shutdown[1024]={0}; GetDlgItemText(hwndDlg,IDC_SHUTDOWN_MESSAGE,shutdown,sizeof(shutdown));
+        if (!shutdown[0]) lstrcpyn(shutdown,DEFAULT_SHUTDOWN_MESSAGES,sizeof(shutdown));
+        static const char hex[]="0123456789ABCDEF"; std::string encoded;
+        for (const unsigned char c : std::string(shutdown)) { encoded+=hex[c>>4]; encoded+=hex[c&15]; }
+        snprintf(tmp,sizeof(tmp),"%d %d %d %d %d %d %s",offs,size,indev,outdev,cflags,noticeMs,encoded.c_str());
         lstrcpyn((char *)lParam, tmp,wParam);
         
       }

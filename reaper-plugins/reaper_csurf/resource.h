@@ -26,6 +26,15 @@
 #define IDC_COMBO1                      1014
 #define IDC_CHECK3                      1015
 #define IDC_COMBO4                      1016
+#define IDC_ENABLE_SURFACE              1024
+#define IDC_MASTER_VOLUME               1025
+#define IDC_MASTER_LTFP                 1026
+#define IDC_MASTER_DISABLED             1027
+#define IDC_RECARM_NORMAL               1028
+#define IDC_RECARM_BANK                 1029
+#define IDC_NOTICE_TIME                 1030
+#define IDC_SHUTDOWN_MESSAGE            1031
+#define IDC_VERSION                     1032
 #define IDC_LISTEN_LBL                  1020
 #define IDC_LISTEN_LBL2                 1021
 #define IDC_DEVICE_LBL                  1022
@@ -40,7 +49,7 @@
 #ifndef APSTUDIO_READONLY_SYMBOLS
 #define _APS_NEXT_RESOURCE_VALUE        105
 #define _APS_NEXT_COMMAND_VALUE         40001
-#define _APS_NEXT_CONTROL_VALUE         1024
+#define _APS_NEXT_CONTROL_VALUE         1033
 #define _APS_NEXT_SYMED_VALUE           101
 #endif
 #endif

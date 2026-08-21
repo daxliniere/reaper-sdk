@@ -1,0 +1,24 @@
+#ifndef DAX_API_H
+#define DAX_API_H
+
+#define REAPERAPI_MINIMAL
+#define REAPERAPI_WANT_ValidatePtr2
+#define REAPERAPI_WANT_GetTrackName
+#define REAPERAPI_WANT_GetTouchedOrFocusedFX
+#define REAPERAPI_WANT_GetTrackSendInfo_Value
+#define REAPERAPI_WANT_SetTrackSendInfo_Value
+#define REAPERAPI_WANT_GetMediaTrackInfo_Value
+#define REAPERAPI_WANT_SetMediaTrackInfo_Value
+#define REAPERAPI_WANT_GetTrackMediaItem
+#define REAPERAPI_WANT_GetMediaItemTake
+#define REAPERAPI_WANT_GetSelectedTrack
+#define REAPERAPI_WANT_TakeFX_GetFXGUID
+#define REAPERAPI_WANT_TakeFX_GetNumParams
+#define REAPERAPI_WANT_TakeFX_GetParamNormalized
+#define REAPERAPI_WANT_TakeFX_SetParamNormalized
+#define REAPERAPI_WANT_TakeFX_GetFXName
+#define REAPERAPI_WANT_TakeFX_GetParamName
+#define REAPERAPI_WANT_TrackFX_GetFXGUID
+#include "../../sdk/reaper_plugin_functions.h"
+
+#endif
