@@ -2,6 +2,8 @@
 
 This is a Cockos MCU control-surface derivative with additional live-control features. It retains the stock MCU/MCU Extender button handling and shared global banking. The optional record-arm **Bank select** mode is based on an idea from AK5K's ReaMCULive.
 
+In REAPER's control-surface list, select **Mackie Control Universal (Dax Liniere)** or **Mackie Control Extender (Dax Liniere)**. Their unique internal IDs prevent collisions with REAPER's built-in MCU surfaces.
+
 ## Changes and operation
 
 - Track Up/Down moves one track; Bank Up/Down moves eight.
@@ -32,4 +34,3 @@ This is a Cockos MCU control-surface derivative with additional live-control fea
 7. Enter Sends Mode with no track, a track with no sends, one selected track, and multiple selected tracks. Confirm the messages and that only the first selected track is controlled. Exit and verify both display rows return to track data.
 8. Test send level, one-at-a-time JOG paging beyond send 8, tap-to-cycle send mode, 1.5-second hold-to-mute, and hold-turn destination channels. Confirm route notices use actual source/destination channels and destination channel count expands.
 9. Change Notice time to its minimum, default, and maximum; reopen settings and REAPER to confirm all settings persist while Mixer/Sends Mode itself resets off.
-

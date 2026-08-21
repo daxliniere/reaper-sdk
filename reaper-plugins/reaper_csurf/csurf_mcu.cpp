@@ -209,7 +209,7 @@ struct ScheduledAction {
 #define CONFIG_FLAG_MASTER_FADER_LTFP 32
 #define CONFIG_FLAG_RECARM_BANK 64
 
-#define DAX_MCU_VERSION "0.3.0-dev"
+#define DAX_MCU_VERSION "0.3.1-dev"
 
 static const char DEFAULT_SHUTDOWN_MESSAGES[] =
   "You are an infinite being.;Begin from elsewhere.;Let the edges soften.;"
@@ -1395,7 +1395,7 @@ public:
 
 
 
-    const char *GetTypeString() { return m_is_mcuex ? "MCUEX" : "MCU"; }
+    const char *GetTypeString() { return m_is_mcuex ? "DAX_MCUEX" : "DAX_MCU"; }
     const char *GetDescString()
     {
       m_descspace.SetFormatted(512,
@@ -2098,7 +2098,7 @@ static IReaperControlSurface *createFunc(const char *type_string, const char *co
     g_csurf_mcpmode = !!GetPrivateProfileInt("csurf","mcu_mcp",0,get_ini_file());
   }
 
-  return new CSurf_MCU(!strcmp(type_string,"MCUEX"),parms[0],parms[1],parms[2],parms[3],parms[4],parms[5],messages.c_str(),errStats);
+  return new CSurf_MCU(!strcmp(type_string,"DAX_MCUEX"),parms[0],parms[1],parms[2],parms[3],parms[4],parms[5],messages.c_str(),errStats);
 }
 
 
@@ -2211,18 +2211,18 @@ static HWND configFunc(const char *type_string, HWND parent, const char *initCon
 
 reaper_csurf_reg_t csurf_mcu_reg = 
 {
-  "MCU",
+  "DAX_MCU",
   // !WANT_LOCALIZE_STRINGS_BEGIN:csurf_type
-  "Mackie Control Universal",
+  "Mackie Control Universal (Dax Liniere)",
   // !WANT_LOCALIZE_STRINGS_END
   createFunc,
   configFunc,
 };
 reaper_csurf_reg_t csurf_mcuex_reg = 
 {
-  "MCUEX",
+  "DAX_MCUEX",
   // !WANT_LOCALIZE_STRINGS_BEGIN:csurf_type
-  "Mackie Control Extender",
+  "Mackie Control Extender (Dax Liniere)",
   // !WANT_LOCALIZE_STRINGS_END
   createFunc,
   configFunc,
