@@ -4,28 +4,21 @@ This is a Cockos MCU control-surface derivative with additional live-control fea
 
 In REAPER's control-surface list, select **Mackie Control Universal (Dax Liniere)** or **Mackie Control Extender (Dax Liniere)**. Their unique internal IDs prevent collisions with REAPER's built-in MCU surfaces.
 
-## Changes and operation
+## Custom features and operation
 
-- Track Up/Down moves one track; Bank Up/Down moves eight.
-- **Master volume** controls REAPER's master volume.
-- **Last-touched FX parameter** maps the master fader to an FX parameter. Tap JOG to capture it; tap JOG again while it remains the last-touched parameter to disconnect it. The captured parameter is briefly identified on the display. Direct parameters and parameters inside containers are supported.
-- **Disabled** stops master-fader send and receive data.
-- **Enable control surface** releases or reconnects the configured MIDI ports.
-- **Record arm buttons** selects normal record-arm operation or the optional Bank-select behavior.
-- **F1-F8 map to markers** retains Cockos's universal MCU option.
-- **Ignore global bank offsets** retains Cockos's option to keep this surface fixed to its configured track range instead of following the shared MCU bank.
-- Press **Mixer** to enter or leave Sends Mode. It always controls the first selected track.
-- In Sends Mode, turn a V-pot for send level and turn JOG to move through sends one at a time.
-- Tap a V-pot to cycle Post-Fader (Post-Pan), Pre-Fader (Post-FX), and Pre-Fader (Pre-FX).
-- Hold a V-pot for 1.5 seconds to toggle send mute. A muted send shows `MUTED` in place of its value.
-- Hold and turn a V-pot to change the receiving channel pair; the destination track's channel count grows when required.
-- Double-push a V-pot, hold the second push, and turn it to change the sending channel pair; the source track's channel count grows when required.
-- Channel changes display the complete source-to-destination route.
-- **Notice time** controls temporary display messages (0.1-10.0 seconds; default 1.5).
-- Channel-routing notices remain visible until the configured Notice time has elapsed after routing input stops.
-- Shutdown messages are semicolon-separated; one is selected when the surface closes.
-- Outside Sends Mode, JOG retains stock movement. JOG push toggles Scrub unless the master fader is in Last-touched FX parameter mode.
-- V-pot push deliberately does not reset pan outside Sends Mode.
+- **Track navigation:** Track Up/Down moves one track; Bank Up/Down moves eight.
+- **Control-surface toggle:** Untick **Enable control surface** to release its MIDI ports; tick it to reconnect.
+- **Record-arm buttons:** Choose normal **Record arm** operation or the optional **Bank select** mode.
+- **Master fader:** Choose **Master volume**, **Last-touched FX parameter**, or **Disabled**. In FX mode, tap JOG to capture the current parameter; tap JOG again while it is still the last-touched parameter to disconnect it. Direct, take-FX, and container parameters are supported.
+- **Sends Mode:** Press **Mixer** to enter or leave. It controls only the first selected track and reports `No track selected` or `No sends present` when appropriate.
+- Turn a V-pot to change its send level. Turn JOG to move through sends one at a time.
+- Tap a V-pot to cycle Post-Fader (Post-Pan), Pre-Fader (Post-FX), and Pre-Fader (Pre-FX). A single tap is resolved after the 350 ms double-push window.
+- Hold a V-pot for 1.5 seconds to toggle mute. A muted send displays `MUTED` instead of its level.
+- Push and turn a V-pot to change the receiving channel pair.
+- Double-push within 350 ms, hold the second push, and turn to change the sending channel pair.
+- Source or destination track channel counts grow automatically when required. Routing notices show the actual complete source-to-destination route and remain until **Notice time** has elapsed with no further routing input.
+- **Notice time:** Sets temporary-message duration from 0.1 to 10.0 seconds; default 1.5. Mute notices are not extended by holding or release.
+- **Shutdown messages:** Enter semicolon-separated phrases; one is selected when the surface closes.
 
 ## Hardware test checklist
 
@@ -36,5 +29,5 @@ In REAPER's control-surface list, select **Mackie Control Universal (Dax Liniere
 5. Untick **Enable control surface** and confirm the MIDI ports become available elsewhere; re-enable it and confirm control returns.
 6. Test all three master-fader modes. In FX mode, capture, move, receive automation from, and disconnect both a normal FX parameter and a parameter inside a container. Confirm moving the fader changes the parameter without jitter.
 7. Enter Sends Mode with no track, a track with no sends, one selected track, and multiple selected tracks. Confirm the messages and that only the first selected track is controlled. Exit and verify both display rows return to track data.
-8. Test send level, one-at-a-time JOG paging beyond send 8, tap-to-cycle send mode, 1.5-second hold-to-mute, and hold-turn destination channels. Confirm route notices use actual source/destination channels and destination channel count expands.
+8. Test send level, one-at-a-time JOG paging beyond send 8, tap-to-cycle send mode, 1.5-second hold-to-mute, push-turn receiving channels, and double-push/hold-turn sending channels. Confirm route notices use actual channels, both track channel counts expand when needed, and the routing notice expires only after routing input becomes idle.
 9. Change Notice time to its minimum, default, and maximum; reopen settings and REAPER to confirm all settings persist while Mixer/Sends Mode itself resets off.
