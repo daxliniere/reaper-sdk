@@ -209,7 +209,7 @@ struct ScheduledAction {
 #define CONFIG_FLAG_MASTER_FADER_LTFP 32
 #define CONFIG_FLAG_RECARM_BANK 64
 
-#define DAX_MCU_VERSION "0.3.9-dev"
+#define DAX_MCU_VERSION "0.3.10-dev"
 
 static const char DEFAULT_SHUTDOWN_MESSAGES[] =
   "You are an infinite being.;Begin from elsewhere.;Let the edges soften.;"
@@ -315,6 +315,8 @@ class CSurf_MCU : public IReaperControlSurface
     unsigned int m_pan_lasttouch[256];
     DWORD m_fader_motor_suppress_until[9]{};
     int m_fader_input_channel{-1};
+    DWORD m_initial_fader_resend_at{};
+    bool m_initial_fader_resend_pending{true};
 
 #ifdef DAX_MCU_FADER_DEBUG
     struct FaderDebugEvent
@@ -741,6 +743,8 @@ class CSurf_MCU : public IReaperControlSurface
       memset(m_pan_lasttouch,0,sizeof(m_pan_lasttouch));
       memset(m_fader_motor_suppress_until,0,sizeof(m_fader_motor_suppress_until));
       m_fader_input_channel=-1;
+      m_initial_fader_resend_at=0;
+      m_initial_fader_resend_pending=true;
       m_mackie_lasttime_mode=-1;
       m_mackie_modifiers=0;
       m_last_miscstate=0;
@@ -1611,6 +1615,24 @@ public:
 
     void RunOutput(DWORD now);
 
+    void RetryInitialFaderPositions(DWORD now)
+    {
+      if (!m_initial_fader_resend_pending || !m_initial_fader_resend_at ||
+          (int)(now-m_initial_fader_resend_at)<0 || !m_midiout) return;
+
+      const int count=std::min(m_size,9);
+      for (int id=0;id<count;id++)
+      {
+        const int position=m_vol_lastpos[id];
+        if (position<0) continue;
+#ifdef DAX_MCU_FADER_DEBUG
+        LogFaderDebug('R',id,position,false);
+#endif
+        m_midiout->Send(0xe0+(id&0xf),position&0x7f,(position>>7)&0x7f,-1);
+      }
+      m_initial_fader_resend_pending=false;
+    }
+
     void Run() 
     { 
       DWORD now=timeGetTime();
@@ -1631,6 +1653,7 @@ public:
         }
         
         RunOutput(now);
+        RetryInitialFaderPositions(now);
         UpdateFocusedFxFader();
         ProcessSendLongPresses(DaxNowSeconds());
         UpdateSendsDisplay();
@@ -1753,6 +1776,8 @@ public:
           if (m_vol_lastpos[id]!=volint)
           {
             m_vol_lastpos[id]=volint;
+            if (m_initial_fader_resend_pending && !m_initial_fader_resend_at)
+              m_initial_fader_resend_at=timeGetTime()+750;
             if (id<9 && id!=m_fader_input_channel)
               m_fader_motor_suppress_until[id]=timeGetTime()+500;
 #ifdef DAX_MCU_FADER_DEBUG
@@ -1781,6 +1806,8 @@ public:
             if (m_vol_lastpos[id]!=panint)
             {
               m_vol_lastpos[id]=panint;
+              if (m_initial_fader_resend_pending && !m_initial_fader_resend_at)
+                m_initial_fader_resend_at=timeGetTime()+750;
               if (id<9 && id!=m_fader_input_channel)
                 m_fader_motor_suppress_until[id]=timeGetTime()+500;
 #ifdef DAX_MCU_FADER_DEBUG

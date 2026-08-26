@@ -88,7 +88,7 @@ BEGIN
                     IDC_EDIT2_LBL2,108,52,148,8
     CONTROL         "Enable control surface",IDC_ENABLE_SURFACE,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,4,67,93,10
     CONTROL         "Ignore fader moves when fader is not being touched",
-                    IDC_CHECK1,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,105,67,190,10
+                    IDC_CHECK1,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,112,67,190,10
     CONTROL         "Map F1-F8 to go to markers",IDC_CHECK2,"Button",
                     BS_AUTOCHECKBOX | WS_TABSTOP,4,79,120,10
     CONTROL         "Ignore global bank offsets (always map to tracks specified)",
@@ -106,7 +106,7 @@ BEGIN
     LTEXT           "secs",IDC_STATIC,85,159,20,8
     LTEXT           "Shutdown message(s), separated by semicolons:",IDC_STATIC,4,172,170,8
     EDITTEXT        IDC_SHUTDOWN_MESSAGE,4,182,357,12,ES_AUTOHSCROLL
-    LTEXT           "v0.3.9-dev",IDC_VERSION,4,198,60,8
+    LTEXT           "v0.3.10-dev",IDC_VERSION,4,195,75,10
 END
 
 IDD_SURFACEEDIT_OSC DIALOG DISCARDABLE  0, 0, 268, 133
