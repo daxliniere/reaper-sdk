@@ -7,6 +7,7 @@ In REAPER's control-surface list, select **Mackie Control Universal (Dax Liniere
 ## Custom features and operation
 
 - **Track navigation:** Track Up/Down moves one track; Bank Up/Down moves eight.
+- **Selected-track controls:** Volume, pan, mute, solo, and normal record-arm follow REAPER's selected-track and track-group ganging behavior.
 - **Control-surface toggle:** Untick **Enable control surface** to release its MIDI ports; tick it to reconnect.
 - **Record-arm buttons:** Choose normal **Record arm** operation or the optional **Bank select** mode.
 - **Master fader:** Choose **Master volume**, **Last-touched FX parameter**, or **Disabled**. In FX mode, tap JOG to capture the current parameter; tap JOG again while it is still the last-touched parameter to disconnect it. Direct, take-FX, and container parameters are supported.
@@ -26,6 +27,7 @@ In REAPER's control-surface list, select **Mackie Control Universal (Dax Liniere
 2. Confirm Track Up/Down moves one track and Bank Up/Down moves eight. With MCU extenders or multiple surfaces, confirm the shared bank offset stays aligned.
 3. Test transport, channel select, mute, solo, automation, arrows/zoom, save/undo, flip/global, jog/scrub, and any buttons available on the hardware. On an MCU with F-keys, enable the marker option and test F1-F8 recall plus Ctrl+F1-F8 set.
 4. Test both record-arm settings: **Record arm** arms tracks; **Bank select** selects banks.
+   With multiple tracks selected, confirm volume, pan, mute, solo, and normal record-arm affect the selection as REAPER's MCP does.
 5. Untick **Enable control surface** and confirm the MIDI ports become available elsewhere; re-enable it and confirm control returns.
 6. Test all three master-fader modes. In FX mode, capture, move, receive automation from, and disconnect both a normal FX parameter and a parameter inside a container. Confirm moving the fader changes the parameter without jitter.
 7. Enter Sends Mode with no track, a track with no sends, one selected track, and multiple selected tracks. Confirm the messages and that only the first selected track is controlled. Exit and verify both display rows return to track data.

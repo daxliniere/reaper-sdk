@@ -209,7 +209,7 @@ struct ScheduledAction {
 #define CONFIG_FLAG_MASTER_FADER_LTFP 32
 #define CONFIG_FLAG_RECARM_BANK 64
 
-#define DAX_MCU_VERSION "0.3.4-dev"
+#define DAX_MCU_VERSION "0.3.5-dev"
 
 static const char DEFAULT_SHUTDOWN_MESSAGES[] =
   "You are an infinite being.;Begin from elsewhere.;Let the edges soften.;"
@@ -804,10 +804,10 @@ class CSurf_MCU : public IReaperControlSurface
           }
           else if (m_flipmode)
           {
-            CSurf_SetSurfacePan(tr,CSurf_OnPanChange(tr,int14ToPan(evt->midi_message[2],evt->midi_message[1]),false),NULL);
+            CSurf_SetSurfacePan(tr,CSurf_OnPanChangeEx(tr,int14ToPan(evt->midi_message[2],evt->midi_message[1]),false,true),NULL);
           }
           else
-            CSurf_SetSurfaceVolume(tr,CSurf_OnVolumeChange(tr,int14ToVol(evt->midi_message[2],evt->midi_message[1]),false),NULL);
+            CSurf_SetSurfaceVolume(tr,CSurf_OnVolumeChangeEx(tr,int14ToVol(evt->midi_message[2],evt->midi_message[1]),false,true),NULL);
         }
         return true;
       } 
@@ -850,11 +850,11 @@ class CSurf_MCU : public IReaperControlSurface
 	      if (evt->midi_message[2]&0x40) adj=-adj;
 	      if (m_flipmode)
 	      {
-	        CSurf_SetSurfaceVolume(tr,CSurf_OnVolumeChange(tr,adj*11.0,true),NULL);
+        CSurf_SetSurfaceVolume(tr,CSurf_OnVolumeChangeEx(tr,adj*11.0,true,true),NULL);
 	      }
 	      else
 	      {
-	        CSurf_SetSurfacePan(tr,CSurf_OnPanChange(tr,adj,true),NULL);
+        CSurf_SetSurfacePan(tr,CSurf_OnPanChangeEx(tr,adj,true,true),NULL);
 	      }
 	    }
 	    return true;
@@ -1044,7 +1044,7 @@ class CSurf_MCU : public IReaperControlSurface
 	  tid+=GetBankOffset();
 	  MediaTrack *tr=CSurf_TrackFromID(tid,g_csurf_mcpmode);
 	  if (tr)
-	    CSurf_OnRecArmChange(tr,-1);
+	    CSurf_OnRecArmChangeEx(tr,-1,true);
 	  return true;
 	}
 	
@@ -1058,9 +1058,9 @@ class CSurf_MCU : public IReaperControlSurface
 	  if (tr)
 	  {
 	    if (ismute)
-	      CSurf_SetSurfaceMute(tr,CSurf_OnMuteChange(tr,-1),NULL);
+	      CSurf_SetSurfaceMute(tr,CSurf_OnMuteChangeEx(tr,-1,true),NULL);
 	    else
-	      CSurf_SetSurfaceSolo(tr,CSurf_OnSoloChange(tr,-1),NULL);
+	      CSurf_SetSurfaceSolo(tr,CSurf_OnSoloChangeEx(tr,-1,true),NULL);
 	  }
 	  return true;
 	}

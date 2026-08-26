@@ -106,7 +106,7 @@ BEGIN
     LTEXT           "secs",IDC_STATIC,85,159,20,8
     LTEXT           "Shutdown message(s), separated by semicolons:",IDC_STATIC,4,172,170,8
     EDITTEXT        IDC_SHUTDOWN_MESSAGE,4,182,357,12,ES_AUTOHSCROLL
-    LTEXT           "v0.3.4-dev",IDC_VERSION,4,198,60,8
+    LTEXT           "v0.3.5-dev",IDC_VERSION,4,198,60,8
 END
 
 IDD_SURFACEEDIT_OSC DIALOG DISCARDABLE  0, 0, 268, 133
