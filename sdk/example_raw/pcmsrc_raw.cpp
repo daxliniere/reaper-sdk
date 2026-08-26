@@ -308,8 +308,6 @@ REAPER_PLUGIN_DLL_EXPORT int REAPER_PLUGIN_ENTRYPOINT(REAPER_PLUGIN_HINSTANCE hI
       return 0;
 
 
-    rec->Register("ext_name",(void *)"Example raw support");
-    rec->Register("ext_vendor",(void *)"Example");
     // our plugin registered, return success
 
     return 1;

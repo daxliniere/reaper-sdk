@@ -56,6 +56,8 @@ BEGIN
                     WS_TABSTOP
     COMBOBOX        IDC_BITRATE,65,32,53,30,CBS_DROPDOWNLIST | WS_VSCROLL | 
                     WS_TABSTOP
+    LTEXT           "approximate",IDC_QUALITY_APPROX,125,19,39,8
+    LTEXT           "approximate",IDC_BITRATE_APPROX,125,34,39,8
     COMBOBOX        IDC_COMBO1,172,2,110,67,CBS_DROPDOWNLIST | WS_VSCROLL | 
                     WS_TABSTOP
     CONTROL         "Do not allow joint stereo",IDC_STEREO_MODE,"Button",

@@ -11,6 +11,8 @@
 #define IDC_MODE                        1014
 #define IDC_QUALITY_LBL                 1017
 #define IDC_BITRATE_LBL                 1018
+#define IDC_QUALITY_APPROX              1019
+#define IDC_BITRATE_APPROX              1020
 #define IDC_COMBO1                      1024
 #define IDC_LAMEVER                     1025
 #define IDC_NAME                        1037

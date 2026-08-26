@@ -1114,9 +1114,6 @@ REAPER_PLUGIN_DLL_EXPORT int REAPER_PLUGIN_ENTRYPOINT(REAPER_PLUGIN_HINSTANCE hI
 
     register_sink(rec);
 
-    rec->Register("ext_name",(void *)"MP3 read/write");
-    rec->Register("ext_vendor",(void *)"Cockos");
-    rec->Register("ext_url",(void *)"https://github.com/justinfrankel/reaper-sdk");
     // our plugin registered, return success
 
     return 1;

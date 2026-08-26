@@ -209,7 +209,7 @@ struct ScheduledAction {
 #define CONFIG_FLAG_MASTER_FADER_LTFP 32
 #define CONFIG_FLAG_RECARM_BANK 64
 
-#define DAX_MCU_VERSION "0.3.5-dev"
+#define DAX_MCU_VERSION "0.3.8-dev"
 
 static const char DEFAULT_SHUTDOWN_MESSAGES[] =
   "You are an infinite being.;Begin from elsewhere.;Let the edges soften.;"
@@ -313,6 +313,8 @@ class CSurf_MCU : public IReaperControlSurface
     char m_fader_touchstate[256];
     unsigned int m_fader_lasttouch[256]; // m_fader_touchstate changes will clear this, moves otherwise set it. if set to -1, then totally disabled
     unsigned int m_pan_lasttouch[256];
+    DWORD m_fader_motor_suppress_until[9]{};
+    int m_fader_input_channel{-1};
 
     WDL_String m_descspace;
     char m_configtmp[1024];
@@ -356,6 +358,26 @@ class CSurf_MCU : public IReaperControlSurface
     int GetBankOffset() const
     {
       return (m_cfg_flags&CONFIG_FLAG_NOBANKOFFSET) ? (m_offset + 1) : (m_offset + 1 + m_allmcus_bank_offset);
+    }
+
+    enum class TrackButtonLed { Mute, Solo, RecArm };
+
+    void RefreshVisibleTrackButtonLeds(TrackButtonLed type)
+    {
+      if (!m_midiout) return;
+
+      const char *parameter=type==TrackButtonLed::Mute ? "B_MUTE" :
+        (type==TrackButtonLed::Solo ? "I_SOLO" : "I_RECARM");
+      const int noteBase=type==TrackButtonLed::Mute ? 0x10 :
+        (type==TrackButtonLed::Solo ? 0x08 : 0x00);
+      const int enabledVelocity=type==TrackButtonLed::Solo ? 1 : 0x7f;
+
+      for (int slot=0;slot<8;slot++)
+      {
+        MediaTrack *track=CSurf_TrackFromID(slot+GetBankOffset(),g_csurf_mcpmode);
+        const bool enabled=track && GetMediaTrackInfo_Value(track,parameter)!=0.0;
+        m_midiout->Send(0x90,noteBase+slot,enabled?enabledVelocity:0,-1);
+      }
     }
 
     bool IsFocusedFxValid() const
@@ -663,6 +685,8 @@ class CSurf_MCU : public IReaperControlSurface
       memset(m_fader_touchstate,0,sizeof(m_fader_touchstate));
       memset(m_fader_lasttouch,0,sizeof(m_fader_lasttouch));
       memset(m_pan_lasttouch,0,sizeof(m_pan_lasttouch));
+      memset(m_fader_motor_suppress_until,0,sizeof(m_fader_motor_suppress_until));
+      m_fader_input_channel=-1;
       m_mackie_lasttime_mode=-1;
       m_mackie_modifiers=0;
       m_last_miscstate=0;
@@ -778,6 +802,10 @@ class CSurf_MCU : public IReaperControlSurface
       {
         int physical=evt->midi_message[0]&0xf;
         if (physical==8 && (m_cfg_flags&CONFIG_FLAG_MASTER_FADER_DISABLED)) return true;
+        DWORD now=timeGetTime();
+        if (physical<9 && !m_fader_touchstate[physical] &&
+            (int)(m_fader_motor_suppress_until[physical]-now)>0)
+          return true;
         int raw=evt->midi_message[1] | (evt->midi_message[2]<<7);
         if (physical==8 && (m_cfg_flags&CONFIG_FLAG_MASTER_FADER_LTFP))
         {
@@ -804,10 +832,16 @@ class CSurf_MCU : public IReaperControlSurface
           }
           else if (m_flipmode)
           {
+            m_fader_input_channel=physical;
             CSurf_SetSurfacePan(tr,CSurf_OnPanChangeEx(tr,int14ToPan(evt->midi_message[2],evt->midi_message[1]),false,true),NULL);
+            m_fader_input_channel=-1;
           }
           else
+          {
+            m_fader_input_channel=physical;
             CSurf_SetSurfaceVolume(tr,CSurf_OnVolumeChangeEx(tr,int14ToVol(evt->midi_message[2],evt->midi_message[1]),false,true),NULL);
+            m_fader_input_channel=-1;
+          }
         }
         return true;
       } 
@@ -1044,7 +1078,10 @@ class CSurf_MCU : public IReaperControlSurface
 	  tid+=GetBankOffset();
 	  MediaTrack *tr=CSurf_TrackFromID(tid,g_csurf_mcpmode);
 	  if (tr)
+	  {
 	    CSurf_OnRecArmChangeEx(tr,-1,true);
+	    RefreshVisibleTrackButtonLeds(TrackButtonLed::RecArm);
+	  }
 	  return true;
 	}
 	
@@ -1061,6 +1098,7 @@ class CSurf_MCU : public IReaperControlSurface
 	      CSurf_SetSurfaceMute(tr,CSurf_OnMuteChangeEx(tr,-1,true),NULL);
 	    else
 	      CSurf_SetSurfaceSolo(tr,CSurf_OnSoloChangeEx(tr,-1,true),NULL);
+	    RefreshVisibleTrackButtonLeds(ismute?TrackButtonLed::Mute:TrackButtonLed::Solo);
 	  }
 	  return true;
 	}
@@ -1220,6 +1258,7 @@ class CSurf_MCU : public IReaperControlSurface
 	bool OnTouch( MIDI_event_t *evt ) {
 	  int fader = evt->midi_message[1]-0x68;
     m_fader_touchstate[fader]=evt->midi_message[2]>=0x7f;
+    if (m_fader_touchstate[fader]) m_fader_motor_suppress_until[fader]=0;
     m_fader_lasttouch[fader]=0xFFFFFFFF; // never use this again!
     return true;
 	}
@@ -1645,6 +1684,8 @@ public:
           if (m_vol_lastpos[id]!=volint)
           {
             m_vol_lastpos[id]=volint;
+            if (id<9 && id!=m_fader_input_channel)
+              m_fader_motor_suppress_until[id]=timeGetTime()+500;
             m_midiout->Send(0xe0 + (id&0xf),volint&0x7f,(volint>>7)&0x7f,-1);
           }
         }
@@ -1668,6 +1709,8 @@ public:
             if (m_vol_lastpos[id]!=panint)
             {
               m_vol_lastpos[id]=panint;
+              if (id<9 && id!=m_fader_input_channel)
+                m_fader_motor_suppress_until[id]=timeGetTime()+500;
               m_midiout->Send(0xe0 + (id&0xf),panint&0x7f,(panint>>7)&0x7f,-1);
             }
           }
