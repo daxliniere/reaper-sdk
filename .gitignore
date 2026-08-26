@@ -1,5 +1,6 @@
 /build/
 /build-nmake/
+/build-nmake-debug/
 /dist/
 /WDL/
 /reaper-plugins/reaper_csurf/x64/

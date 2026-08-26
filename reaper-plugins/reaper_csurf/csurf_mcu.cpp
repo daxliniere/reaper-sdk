@@ -209,7 +209,7 @@ struct ScheduledAction {
 #define CONFIG_FLAG_MASTER_FADER_LTFP 32
 #define CONFIG_FLAG_RECARM_BANK 64
 
-#define DAX_MCU_VERSION "0.3.8-dev"
+#define DAX_MCU_VERSION "0.3.9-dev"
 
 static const char DEFAULT_SHUTDOWN_MESSAGES[] =
   "You are an infinite being.;Begin from elsewhere.;Let the edges soften.;"
@@ -315,6 +315,60 @@ class CSurf_MCU : public IReaperControlSurface
     unsigned int m_pan_lasttouch[256];
     DWORD m_fader_motor_suppress_until[9]{};
     int m_fader_input_channel{-1};
+
+#ifdef DAX_MCU_FADER_DEBUG
+    struct FaderDebugEvent
+    {
+      DWORD time;
+      char event;
+      unsigned char channel;
+      int value;
+      bool touched;
+      bool suppressed;
+    };
+    FaderDebugEvent m_fader_debug_events[8192]{};
+    int m_fader_debug_count{};
+    DWORD m_fader_debug_last_flush{};
+    FILE *m_fader_debug_file{};
+
+    void LogFaderDebug(char event, int channel, int value, bool suppressed)
+    {
+      if (m_fader_debug_count >= (int)(sizeof(m_fader_debug_events)/sizeof(m_fader_debug_events[0]))) return;
+      FaderDebugEvent &entry=m_fader_debug_events[m_fader_debug_count++];
+      entry.time=timeGetTime();
+      entry.event=event;
+      entry.channel=(unsigned char)channel;
+      entry.value=value;
+      entry.touched=channel>=0 && channel<9 && m_fader_touchstate[channel]!=0;
+      entry.suppressed=suppressed;
+    }
+
+    void FlushFaderDebug()
+    {
+      if (!m_fader_debug_count) return;
+      if (!m_fader_debug_file)
+      {
+        char tempPath[MAX_PATH]{};
+        char logPath[MAX_PATH]{};
+        GetTempPathA((DWORD)sizeof(tempPath),tempPath);
+        snprintf(logPath,sizeof(logPath),"%sDaxLiniereMCU-fader-debug-%lu.tsv",tempPath,(unsigned long)GetCurrentProcessId());
+        m_fader_debug_file=fopen(logPath,"a");
+        if (m_fader_debug_file)
+          fprintf(m_fader_debug_file,"time_ms\tevent\tchannel\tvalue\ttouched\tsuppressed\tinput_device\tsurface_offset\n");
+      }
+      if (!m_fader_debug_file) { m_fader_debug_count=0; return; }
+      for (int i=0;i<m_fader_debug_count;i++)
+      {
+        const FaderDebugEvent &entry=m_fader_debug_events[i];
+        fprintf(m_fader_debug_file,"%lu\t%c\t%d\t%d\t%d\t%d\t%d\t%d\n",
+          (unsigned long)entry.time,entry.event,(int)entry.channel,entry.value,
+          entry.touched?1:0,entry.suppressed?1:0,m_midi_in_dev,m_offset);
+      }
+      fflush(m_fader_debug_file);
+      m_fader_debug_count=0;
+      m_fader_debug_last_flush=timeGetTime();
+    }
+#endif
 
     WDL_String m_descspace;
     char m_configtmp[1024];
@@ -803,10 +857,14 @@ class CSurf_MCU : public IReaperControlSurface
         int physical=evt->midi_message[0]&0xf;
         if (physical==8 && (m_cfg_flags&CONFIG_FLAG_MASTER_FADER_DISABLED)) return true;
         DWORD now=timeGetTime();
-        if (physical<9 && !m_fader_touchstate[physical] &&
-            (int)(m_fader_motor_suppress_until[physical]-now)>0)
-          return true;
         int raw=evt->midi_message[1] | (evt->midi_message[2]<<7);
+        bool suppressed=physical<9 && !m_fader_touchstate[physical] &&
+          (int)(m_fader_motor_suppress_until[physical]-now)>0;
+#ifdef DAX_MCU_FADER_DEBUG
+        LogFaderDebug('I',physical,raw,suppressed);
+#endif
+        if (suppressed)
+          return true;
         if (physical==8 && (m_cfg_flags&CONFIG_FLAG_MASTER_FADER_LTFP))
         {
           double current=GetFocusedFxValue();
@@ -1259,6 +1317,9 @@ class CSurf_MCU : public IReaperControlSurface
 	  int fader = evt->midi_message[1]-0x68;
     m_fader_touchstate[fader]=evt->midi_message[2]>=0x7f;
     if (m_fader_touchstate[fader]) m_fader_motor_suppress_until[fader]=0;
+#ifdef DAX_MCU_FADER_DEBUG
+    LogFaderDebug('T',fader,m_fader_touchstate[fader]?1:0,false);
+#endif
     m_fader_lasttouch[fader]=0xFFFFFFFF; // never use this again!
     return true;
 	}
@@ -1459,6 +1520,10 @@ public:
 
     ~CSurf_MCU() 
     {
+#ifdef DAX_MCU_FADER_DEBUG
+      FlushFaderDebug();
+      if (m_fader_debug_file) fclose(m_fader_debug_file);
+#endif
       m_mcu_list.Delete(m_mcu_list.Find(this));
       if (m_midiout)
       {
@@ -1549,6 +1614,10 @@ public:
     void Run() 
     { 
       DWORD now=timeGetTime();
+
+#ifdef DAX_MCU_FADER_DEBUG
+      if (m_fader_debug_count && now-m_fader_debug_last_flush>=250) FlushFaderDebug();
+#endif
 
       if ((now - m_frameupd_lastrun) >= (1000/std::max((*g_config_csurf_rate),1)))
       {
@@ -1686,6 +1755,9 @@ public:
             m_vol_lastpos[id]=volint;
             if (id<9 && id!=m_fader_input_channel)
               m_fader_motor_suppress_until[id]=timeGetTime()+500;
+#ifdef DAX_MCU_FADER_DEBUG
+            LogFaderDebug('O',id,volint,false);
+#endif
             m_midiout->Send(0xe0 + (id&0xf),volint&0x7f,(volint>>7)&0x7f,-1);
           }
         }
@@ -1711,6 +1783,9 @@ public:
               m_vol_lastpos[id]=panint;
               if (id<9 && id!=m_fader_input_channel)
                 m_fader_motor_suppress_until[id]=timeGetTime()+500;
+#ifdef DAX_MCU_FADER_DEBUG
+              LogFaderDebug('O',id,panint,false);
+#endif
               m_midiout->Send(0xe0 + (id&0xf),panint&0x7f,(panint>>7)&0x7f,-1);
             }
           }
