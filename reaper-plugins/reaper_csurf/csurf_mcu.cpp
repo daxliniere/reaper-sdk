@@ -25,7 +25,7 @@ static void DaxAdvanceFolderState(MediaTrack *track, int *folderDepth, int *hidd
 {
   const int depthChange=(int)GetMediaTrackInfo_Value(track,"I_FOLDERDEPTH");
   const int compact=(int)GetMediaTrackInfo_Value(track,"I_FOLDERCOMPACT");
-  if (depthChange>0 && compact>=2 && *hiddenFromDepth<0)
+  if (depthChange>0 && compact>=1 && *hiddenFromDepth<0)
     *hiddenFromDepth=*folderDepth+1;
   *folderDepth+=depthChange;
   if (*hiddenFromDepth>=0 && *folderDepth<*hiddenFromDepth) *hiddenFromDepth=-1;
@@ -285,7 +285,7 @@ struct ScheduledAction {
 #define CONFIG_FLAG_MASTER_FADER_LTFP 32
 #define CONFIG_FLAG_RECARM_BANK 64
 
-#define DAX_MCU_VERSION "0.3.11-dev"
+#define DAX_MCU_VERSION "0.3.12-dev"
 
 static const char DEFAULT_SHUTDOWN_MESSAGES[] =
   "You are an infinite being.;Begin from elsewhere.;Let the edges soften.;"
