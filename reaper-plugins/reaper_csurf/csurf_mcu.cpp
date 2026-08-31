@@ -21,82 +21,6 @@ static double DaxNowSeconds()
   return (double)GetTickCount64() / 1000.0;
 }
 
-static void DaxAdvanceFolderState(MediaTrack *track, int *folderDepth, int *hiddenFromDepth)
-{
-  const int depthChange=(int)GetMediaTrackInfo_Value(track,"I_FOLDERDEPTH");
-  const int compact=(int)GetMediaTrackInfo_Value(track,"I_FOLDERCOMPACT");
-  if (depthChange>0 && compact>=1 && *hiddenFromDepth<0)
-    *hiddenFromDepth=*folderDepth+1;
-  *folderDepth+=depthChange;
-  if (*hiddenFromDepth>=0 && *folderDepth<*hiddenFromDepth) *hiddenFromDepth=-1;
-}
-
-static MediaTrack *DaxSurfaceTrackFromID(int index, bool mcpView)
-{
-  if (index==0) return CSurf_TrackFromID(0,mcpView);
-  if (index<0) return NULL;
-
-  int visibleIndex=0;
-  int folderDepth=0;
-  int hiddenFromDepth=-1;
-  const int trackCount=CSurf_NumTracks(false);
-  for (int trackIndex=1;trackIndex<=trackCount;trackIndex++)
-  {
-    MediaTrack *track=CSurf_TrackFromID(trackIndex,false);
-    const bool hidden=hiddenFromDepth>=0 && folderDepth>=hiddenFromDepth;
-    if (track && CSurf_TrackToID(track,mcpView)>0 && !hidden)
-    {
-      visibleIndex++;
-      if (visibleIndex==index) return track;
-    }
-    if (track) DaxAdvanceFolderState(track,&folderDepth,&hiddenFromDepth);
-  }
-  return NULL;
-}
-
-static int DaxSurfaceTrackToID(MediaTrack *target, bool mcpView)
-{
-  if (!target) return -1;
-  if (target==CSurf_TrackFromID(0,false)) return 0;
-
-  int visibleIndex=0;
-  int folderDepth=0;
-  int hiddenFromDepth=-1;
-  const int trackCount=CSurf_NumTracks(false);
-  for (int trackIndex=1;trackIndex<=trackCount;trackIndex++)
-  {
-    MediaTrack *track=CSurf_TrackFromID(trackIndex,false);
-    const bool hidden=hiddenFromDepth>=0 && folderDepth>=hiddenFromDepth;
-    if (track && CSurf_TrackToID(track,mcpView)>0 && !hidden)
-    {
-      visibleIndex++;
-      if (track==target) return visibleIndex;
-    }
-    if (track) DaxAdvanceFolderState(track,&folderDepth,&hiddenFromDepth);
-  }
-  return -1;
-}
-
-static int DaxSurfaceNumTracks(bool mcpView)
-{
-  int count=0;
-  int folderDepth=0;
-  int hiddenFromDepth=-1;
-  const int trackCount=CSurf_NumTracks(false);
-  for (int trackIndex=1;trackIndex<=trackCount;trackIndex++)
-  {
-    MediaTrack *track=CSurf_TrackFromID(trackIndex,false);
-    const bool hidden=hiddenFromDepth>=0 && folderDepth>=hiddenFromDepth;
-    if (track && CSurf_TrackToID(track,mcpView)>0 && !hidden) count++;
-    if (track) DaxAdvanceFolderState(track,&folderDepth,&hiddenFromDepth);
-  }
-  return count;
-}
-
-#define CSurf_TrackFromID DaxSurfaceTrackFromID
-#define CSurf_TrackToID DaxSurfaceTrackToID
-#define CSurf_NumTracks DaxSurfaceNumTracks
-
 /*
 MCU documentation:
 
@@ -285,7 +209,7 @@ struct ScheduledAction {
 #define CONFIG_FLAG_MASTER_FADER_LTFP 32
 #define CONFIG_FLAG_RECARM_BANK 64
 
-#define DAX_MCU_VERSION "0.3.12-dev"
+#define DAX_MCU_VERSION "0.3.13-dev"
 
 static const char DEFAULT_SHUTDOWN_MESSAGES[] =
   "You are an infinite being.;Begin from elsewhere.;Let the edges soften.;"
@@ -2404,7 +2328,8 @@ static IReaperControlSurface *createFunc(const char *type_string, const char *co
   if (!init)
   {
     init = true;
-    g_csurf_mcpmode = !!GetPrivateProfileInt("csurf","mcu_mcp",0,get_ini_file());
+    g_csurf_mcpmode = !!GetPrivateProfileInt("csurf","mcu_mcp",1,get_ini_file());
+    WritePrivateProfileString("csurf","mcu_mcp",g_csurf_mcpmode?"1":"0",get_ini_file());
   }
 
   return new CSurf_MCU(!strcmp(type_string,"DAX_MCUEX"),parms[0],parms[1],parms[2],parms[3],parms[4],parms[5],messages.c_str(),errStats);
