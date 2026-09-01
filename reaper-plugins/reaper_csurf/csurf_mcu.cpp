@@ -183,7 +183,8 @@ static unsigned int get_midi_evt_code( MIDI_event_t *evt ) {
 
 class CSurf_MCU;
 static WDL_PtrList<CSurf_MCU> m_mcu_list;
-static bool g_csurf_mcpmode;
+// AK5K's ReaMCULive defaults to REAPER's MCP-visible track list.
+static bool g_csurf_mcpmode=true;
 static int m_flipmode;
 static int m_allmcus_bank_offset;
 
@@ -209,7 +210,7 @@ struct ScheduledAction {
 #define CONFIG_FLAG_MASTER_FADER_LTFP 32
 #define CONFIG_FLAG_RECARM_BANK 64
 
-#define DAX_MCU_VERSION "0.3.14-dev"
+#define DAX_MCU_VERSION "0.3.15-dev"
 
 static const char DEFAULT_SHUTDOWN_MESSAGES[] =
   "You are an infinite being.;Begin from elsewhere.;Let the edges soften.;"
@@ -2323,13 +2324,6 @@ static IReaperControlSurface *createFunc(const char *type_string, const char *co
 {
   int parms[6]; std::string messages;
   parseParms(configString,parms,&messages);
-
-  static bool init;
-  if (!init)
-  {
-    init = true;
-    g_csurf_mcpmode = !!GetPrivateProfileInt("csurf","mcu_mcp",0,get_ini_file());
-  }
 
   return new CSurf_MCU(!strcmp(type_string,"DAX_MCUEX"),parms[0],parms[1],parms[2],parms[3],parms[4],parms[5],messages.c_str(),errStats);
 }
