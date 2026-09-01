@@ -70,7 +70,7 @@ BEGIN
                     IDC_EDIT2_LBL2,108,58,148,8
 END
 
-IDD_SURFACEEDIT_MCU1 DIALOG DISCARDABLE  0, 0, 365, 209
+IDD_SURFACEEDIT_MCU1 DIALOG DISCARDABLE  0, 0, 365, 221
 STYLE DS_CONTROL | WS_CHILD
 FONT 8, "MS Shell Dlg"
 BEGIN
@@ -93,20 +93,21 @@ BEGIN
                     BS_AUTOCHECKBOX | WS_TABSTOP,4,79,120,10
     CONTROL         "Ignore global bank offsets (always map to tracks specified)",
                     IDC_CHECK3,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,140,79,221,10
-    GROUPBOX        "Master fader",IDC_STATIC,4,92,176,62
-    CONTROL         "Master volume",IDC_MASTER_VOLUME,"Button",BS_AUTORADIOBUTTON,10,104,70,10
-    CONTROL         "Last-touched FX parameter",IDC_MASTER_LTFP,"Button",BS_AUTORADIOBUTTON,10,116,110,10
-    LTEXT           "Tap JOG wheel to capture current FX parameter",IDC_STATIC,18,127,155,8
-    CONTROL         "Disabled",IDC_MASTER_DISABLED,"Button",BS_AUTORADIOBUTTON,10,140,50,10
-    GROUPBOX        "Record arm buttons",IDC_STATIC,185,92,176,62
-    CONTROL         "Record arm",IDC_RECARM_NORMAL,"Button",BS_AUTORADIOBUTTON,191,106,60,10
-    CONTROL         "Bank select",IDC_RECARM_BANK,"Button",BS_AUTORADIOBUTTON,191,120,60,10
-    LTEXT           "Notice time:",IDC_STATIC,4,159,45,8
-    EDITTEXT        IDC_NOTICE_TIME,51,157,30,12,ES_AUTOHSCROLL
-    LTEXT           "secs",IDC_STATIC,85,159,20,8
-    LTEXT           "Shutdown message(s), separated by semicolons:",IDC_STATIC,4,172,170,8
-    EDITTEXT        IDC_SHUTDOWN_MESSAGE,4,182,357,12,ES_AUTOHSCROLL
-    LTEXT           "v0.3.15-dev",IDC_VERSION,4,195,75,10
+    CONTROL         "Display collapsed child tracks",IDC_DISPLAY_COLLAPSED_CHILDREN,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,4,91,140,10
+    GROUPBOX        "Master fader",IDC_STATIC,4,104,176,62
+    CONTROL         "Master volume",IDC_MASTER_VOLUME,"Button",BS_AUTORADIOBUTTON,10,116,70,10
+    CONTROL         "Last-touched FX parameter",IDC_MASTER_LTFP,"Button",BS_AUTORADIOBUTTON,10,128,110,10
+    LTEXT           "Tap JOG wheel to capture current FX parameter",IDC_STATIC,18,139,155,8
+    CONTROL         "Disabled",IDC_MASTER_DISABLED,"Button",BS_AUTORADIOBUTTON,10,152,50,10
+    GROUPBOX        "Record arm buttons",IDC_STATIC,185,104,176,62
+    CONTROL         "Record arm",IDC_RECARM_NORMAL,"Button",BS_AUTORADIOBUTTON,191,118,60,10
+    CONTROL         "Bank select",IDC_RECARM_BANK,"Button",BS_AUTORADIOBUTTON,191,132,60,10
+    LTEXT           "Notice time:",IDC_STATIC,4,171,45,8
+    EDITTEXT        IDC_NOTICE_TIME,51,169,30,12,ES_AUTOHSCROLL
+    LTEXT           "secs",IDC_STATIC,85,171,20,8
+    LTEXT           "Shutdown message(s), separated by semicolons:",IDC_STATIC,4,184,170,8
+    EDITTEXT        IDC_SHUTDOWN_MESSAGE,4,194,357,12,ES_AUTOHSCROLL
+    LTEXT           "v0.3.17-dev",IDC_VERSION,4,207,75,10
 END
 
 IDD_SURFACEEDIT_OSC DIALOG DISCARDABLE  0, 0, 268, 133

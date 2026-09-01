@@ -183,8 +183,6 @@ static unsigned int get_midi_evt_code( MIDI_event_t *evt ) {
 
 class CSurf_MCU;
 static WDL_PtrList<CSurf_MCU> m_mcu_list;
-// AK5K's ReaMCULive defaults to REAPER's MCP-visible track list.
-static bool g_csurf_mcpmode=true;
 static int m_flipmode;
 static int m_allmcus_bank_offset;
 
@@ -209,8 +207,9 @@ struct ScheduledAction {
 #define CONFIG_FLAG_SURFACE_DISABLED 16
 #define CONFIG_FLAG_MASTER_FADER_LTFP 32
 #define CONFIG_FLAG_RECARM_BANK 64
+#define CONFIG_FLAG_DISPLAY_COLLAPSED_CHILDREN 128
 
-#define DAX_MCU_VERSION "0.3.15-dev"
+#define DAX_MCU_VERSION "0.3.17-dev"
 
 static const char DEFAULT_SHUTDOWN_MESSAGES[] =
   "You are an infinite being.;Begin from elsewhere.;Let the edges soften.;"
@@ -417,6 +416,12 @@ class CSurf_MCU : public IReaperControlSurface
       return (m_cfg_flags&CONFIG_FLAG_NOBANKOFFSET) ? (m_offset + 1) : (m_offset + 1 + m_allmcus_bank_offset);
     }
 
+    // AK5K's ReaMCULive fixes track mapping to REAPER's MCP-visible list.
+    bool UseMcpTrackList() const
+    {
+      return !(m_cfg_flags&CONFIG_FLAG_DISPLAY_COLLAPSED_CHILDREN);
+    }
+
     enum class TrackButtonLed { Mute, Solo, RecArm };
 
     void RefreshVisibleTrackButtonLeds(TrackButtonLed type)
@@ -431,7 +436,7 @@ class CSurf_MCU : public IReaperControlSurface
 
       for (int slot=0;slot<8;slot++)
       {
-        MediaTrack *track=CSurf_TrackFromID(slot+GetBankOffset(),g_csurf_mcpmode);
+        MediaTrack *track=CSurf_TrackFromID(slot+GetBankOffset(),UseMcpTrackList());
         const bool enabled=track && GetMediaTrackInfo_Value(track,parameter)!=0.0;
         m_midiout->Send(0x90,noteBase+slot,enabled?enabledVelocity:0,-1);
       }
@@ -761,7 +766,7 @@ class CSurf_MCU : public IReaperControlSurface
         if (!m_is_mcuex)
         {
           m_midiout->Send(0x90, 0x32,m_flipmode?1:0,-1);
-          m_midiout->Send(0x90, 0x33,g_csurf_mcpmode?0x7f:0,-1);
+          m_midiout->Send(0x90, 0x33,UseMcpTrackList()?0x7f:0,-1);
     
           m_midiout->Send(0x90, 0x64,(m_mackie_arrow_states&64)?0x7f:0,-1);
           m_midiout->Send(0x90, 0x65,(m_mackie_arrow_states&128)?0x7f:0,-1);
@@ -886,7 +891,7 @@ class CSurf_MCU : public IReaperControlSurface
         if (tid == 8) tid=0; // master offset, master=0
         else tid+=GetBankOffset();
 
-        MediaTrack *tr=CSurf_TrackFromID(tid,g_csurf_mcpmode);
+        MediaTrack *tr=CSurf_TrackFromID(tid,UseMcpTrackList());
 
         if (tr)
         {
@@ -940,7 +945,7 @@ class CSurf_MCU : public IReaperControlSurface
 	    }
 	    if (tid == 8) tid=0; // adjust for master
 	    else tid+=GetBankOffset();
-	    MediaTrack *tr=CSurf_TrackFromID(tid,g_csurf_mcpmode);
+	    MediaTrack *tr=CSurf_TrackFromID(tid,UseMcpTrackList());
 	    if (tr)
 	    {
 	      double adj=(evt->midi_message[2]&0x3f)/31.0;
@@ -1017,7 +1022,7 @@ class CSurf_MCU : public IReaperControlSurface
 
 	  if (evt->midi_message[1] & 1) // increase by X
 	  {
-	    int msize=CSurf_NumTracks(g_csurf_mcpmode);
+	    int msize=CSurf_NumTracks(UseMcpTrackList());
 	    if (movesize>1)
 	    {
 	      if (m_allmcus_bank_offset+maxfaderpos >= msize) return true;
@@ -1113,7 +1118,7 @@ class CSurf_MCU : public IReaperControlSurface
 	  /* Stock reset behaviour intentionally disabled.
 	  trackid+=GetBankOffset();
 
-	  MediaTrack *tr=CSurf_TrackFromID(trackid,g_csurf_mcpmode);
+	  MediaTrack *tr=CSurf_TrackFromID(trackid,UseMcpTrackList());
 	  if (tr)
 	  {
 	    if (m_flipmode)
@@ -1139,7 +1144,7 @@ class CSurf_MCU : public IReaperControlSurface
 	  }
 	  int tid=evt->midi_message[1];
 	  tid+=GetBankOffset();
-	  MediaTrack *tr=CSurf_TrackFromID(tid,g_csurf_mcpmode);
+	  MediaTrack *tr=CSurf_TrackFromID(tid,UseMcpTrackList());
 	  if (tr)
 	  {
 	    CSurf_OnRecArmChangeEx(tr,-1,true);
@@ -1154,7 +1159,7 @@ class CSurf_MCU : public IReaperControlSurface
 	  tid&=7;
 	  tid+=GetBankOffset();
 
-	  MediaTrack *tr=CSurf_TrackFromID(tid,g_csurf_mcpmode);
+	  MediaTrack *tr=CSurf_TrackFromID(tid,UseMcpTrackList());
 	  if (tr)
 	  {
 	    if (ismute)
@@ -1169,7 +1174,7 @@ class CSurf_MCU : public IReaperControlSurface
 	bool OnSoloDC( MIDI_event_t *evt ) {
 	  int tid=evt->midi_message[1]-0x08;
 	  tid+=GetBankOffset();
-	  MediaTrack *tr=CSurf_TrackFromID(tid,g_csurf_mcpmode);
+	  MediaTrack *tr=CSurf_TrackFromID(tid,UseMcpTrackList());
 	  SoloAllTracks(0);
 	  CSurf_SetSurfaceSolo(tr,CSurf_OnSoloChange(tr,1),NULL);
 	  return true;
@@ -1179,7 +1184,7 @@ class CSurf_MCU : public IReaperControlSurface
 	  int tid=evt->midi_message[1]-0x18;
 	  tid&=7;
 	  tid+=GetBankOffset();
-	  MediaTrack *tr=CSurf_TrackFromID(tid,g_csurf_mcpmode);
+	  MediaTrack *tr=CSurf_TrackFromID(tid,UseMcpTrackList());
 	  if (tr) CSurf_OnSelectedChange(tr,-1); // this will automatically update the surface
 	  return true;
 	}
@@ -1188,7 +1193,7 @@ class CSurf_MCU : public IReaperControlSurface
 	  int tid=evt->midi_message[1]-0x18;
 	  tid&=7;
 	  tid+=GetBankOffset();
-	  MediaTrack *tr=CSurf_TrackFromID(tid,g_csurf_mcpmode);
+	  MediaTrack *tr=CSurf_TrackFromID(tid,UseMcpTrackList());
 	  
 	  // Clear already selected tracks
 	  SelectedTrack *i = m_selected_tracks;
@@ -1293,11 +1298,8 @@ class CSurf_MCU : public IReaperControlSurface
 	}
 
 	bool OnGlobal( MIDI_event_t *evt ) {
-    g_csurf_mcpmode=!g_csurf_mcpmode;
     if (m_midiout) 
-      m_midiout->Send(0x90, 0x33,g_csurf_mcpmode?0x7f:0,-1);
-    TrackList_UpdateAllExternalSurfaces();
-    WritePrivateProfileString("csurf","mcu_mcp",g_csurf_mcpmode?"1":"0",get_ini_file());
+      m_midiout->Send(0x90, 0x33,UseMcpTrackList()?0x7f:0,-1);
     return true;
 	}
 	
@@ -1707,7 +1709,7 @@ public:
         int x;
         for (x = 0; x < 8; x ++)
         {
-          MediaTrack *t=CSurf_TrackFromID(x+GetBankOffset(),g_csurf_mcpmode);
+          MediaTrack *t=CSurf_TrackFromID(x+GetBankOffset(),UseMcpTrackList());
           if (!t || t == CSurf_TrackFromID(0,false))
           {
             // clear item
@@ -1754,7 +1756,7 @@ public:
         }
       }
     }
-#define FIXID(id) const int oid=CSurf_TrackToID(trackid,g_csurf_mcpmode); \
+#define FIXID(id) const int oid=CSurf_TrackToID(trackid,UseMcpTrackList()); \
     int id=oid; \
     if (id>0) { id -= GetBankOffset(); if (id==8) id=-1; } else if (id==0) id=8;
 
@@ -1962,7 +1964,7 @@ public:
         strncpy(buf,title,6);
         buf[6]=0;
         if ( strlen(buf) == 0 ) {
-          int trackno = CSurf_TrackToID(trackid,g_csurf_mcpmode);
+          int trackno = CSurf_TrackToID(trackid,UseMcpTrackList());
           if ( trackno < 100 ) 
             snprintf( buf, sizeof(buf), "  %02d  ", trackno );
           else
@@ -2035,7 +2037,7 @@ public:
     { 
       if (m_cfg_flags&CONFIG_FLAG_NOBANKOFFSET) return;
 
-      int tid=CSurf_TrackToID(trackid,g_csurf_mcpmode);
+      int tid=CSurf_TrackToID(trackid,UseMcpTrackList());
       // if no normal MCU's here, then slave it
       int x;
       int movesize=8;
@@ -2298,7 +2300,7 @@ void CSurf_MCU::RunOutput(DWORD now)
     {
       int idx=GetBankOffset()+x;
       MediaTrack *t;
-      if ((t=CSurf_TrackFromID(idx,g_csurf_mcpmode)))
+      if ((t=CSurf_TrackFromID(idx,UseMcpTrackList())))
       {
         double pp=VAL2DB((Track_GetPeakInfo(t,0)+Track_GetPeakInfo(t,1)) * 0.5);
 
@@ -2374,6 +2376,8 @@ static WDL_DLGRET dlgProc(HWND hwndDlg, UINT uMsg, WPARAM wParam, LPARAM lParam)
           CheckDlgButton(hwndDlg,IDC_CHECK2,BST_CHECKED);
         if (parms[4]&CONFIG_FLAG_NOBANKOFFSET)
           CheckDlgButton(hwndDlg,IDC_CHECK3,BST_CHECKED);
+        if (parms[4]&CONFIG_FLAG_DISPLAY_COLLAPSED_CHILDREN)
+          CheckDlgButton(hwndDlg,IDC_DISPLAY_COLLAPSED_CHILDREN,BST_CHECKED);
         CheckDlgButton(hwndDlg,IDC_ENABLE_SURFACE,(parms[4]&CONFIG_FLAG_SURFACE_DISABLED)?BST_UNCHECKED:BST_CHECKED);
         CheckRadioButton(hwndDlg,IDC_MASTER_VOLUME,IDC_MASTER_DISABLED,
           (parms[4]&CONFIG_FLAG_MASTER_FADER_DISABLED)?IDC_MASTER_DISABLED:
@@ -2415,6 +2419,8 @@ static WDL_DLGRET dlgProc(HWND hwndDlg, UINT uMsg, WPARAM wParam, LPARAM lParam)
           cflags|=CONFIG_FLAG_MAPF1F8TOMARKERS;
         if (IsDlgButtonChecked(hwndDlg,IDC_CHECK3))
           cflags|=CONFIG_FLAG_NOBANKOFFSET;
+        if (IsDlgButtonChecked(hwndDlg,IDC_DISPLAY_COLLAPSED_CHILDREN))
+          cflags|=CONFIG_FLAG_DISPLAY_COLLAPSED_CHILDREN;
         if (!IsDlgButtonChecked(hwndDlg,IDC_ENABLE_SURFACE)) cflags|=CONFIG_FLAG_SURFACE_DISABLED;
         if (IsDlgButtonChecked(hwndDlg,IDC_MASTER_DISABLED)) cflags|=CONFIG_FLAG_MASTER_FADER_DISABLED;
         if (IsDlgButtonChecked(hwndDlg,IDC_MASTER_LTFP)) cflags|=CONFIG_FLAG_MASTER_FADER_LTFP;
