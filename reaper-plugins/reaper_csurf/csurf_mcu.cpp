@@ -209,7 +209,12 @@ struct ScheduledAction {
 #define CONFIG_FLAG_RECARM_BANK 64
 #define CONFIG_FLAG_DISPLAY_COLLAPSED_CHILDREN 128
 
-#define DAX_MCU_VERSION "0.3.18-dev"
+#define DAX_MCU_VERSION_BASE "0.3.19"
+#ifdef DAX_MCU_FADER_DEBUG
+#define DAX_MCU_VERSION DAX_MCU_VERSION_BASE "-debug"
+#else
+#define DAX_MCU_VERSION DAX_MCU_VERSION_BASE "-dev"
+#endif
 
 static const char DEFAULT_SHUTDOWN_MESSAGES[] =
   "You are an infinite being.;Begin from elsewhere.;Let the edges soften.;"
