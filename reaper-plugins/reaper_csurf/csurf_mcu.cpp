@@ -210,7 +210,7 @@ struct ScheduledAction {
 #define CONFIG_FLAG_DISPLAY_COLLAPSED_CHILDREN 128
 #define CONFIG_FLAG_SWAP_SELECT_MUTE 256
 
-#define DAX_MCU_VERSION_BASE "0.3.22"
+#define DAX_MCU_VERSION_BASE "0.3.23"
 #ifdef DAX_MCU_FADER_DEBUG
 #define DAX_MCU_VERSION DAX_MCU_VERSION_BASE "-debug"
 #else
@@ -1164,68 +1164,29 @@ class CSurf_MCU : public IReaperControlSurface
 	  return true;
 	}
 	
-	bool OnMuteSolo( MIDI_event_t *evt ) {
-	  int tid=evt->midi_message[1]-0x08;
-	  int ismute=(tid&8);
-	  tid&=7;
-	  if (ismute && SwapSelectMute())
-	  {
-	    MIDI_event_t mapped=*evt;
-	    mapped.midi_message[1]=0x18+tid;
-	    return OnChannelSelect(&mapped);
-	  }
-	  tid+=GetBankOffset();
-
+	bool ToggleTrackMute( int slot ) {
+	  int tid=slot+GetBankOffset();
 	  MediaTrack *tr=CSurf_TrackFromID(tid,UseMcpTrackList());
 	  if (tr)
 	  {
-	    if (ismute)
-	      CSurf_SetSurfaceMute(tr,CSurf_OnMuteChangeEx(tr,-1,true),NULL);
-	    else
-	      CSurf_SetSurfaceSolo(tr,CSurf_OnSoloChangeEx(tr,-1,true),NULL);
-	    RefreshVisibleTrackButtonLeds(ismute?TrackButtonLed::Mute:TrackButtonLed::Solo);
+	    CSurf_SetSurfaceMute(tr,CSurf_OnMuteChangeEx(tr,-1,true),NULL);
+	    RefreshVisibleTrackButtonLeds(TrackButtonLed::Mute);
 	  }
 	  return true;
-	}
-	
-	bool OnMuteSoloDC( MIDI_event_t *evt ) {
-	  if (!SwapSelectMute()) return OnMuteSolo(evt);
-	  MIDI_event_t mapped=*evt;
-	  mapped.midi_message[1]=0x18+(evt->midi_message[1]&7);
-	  return OnChannelSelectDC(&mapped);
 	}
 
-	bool OnSoloDC( MIDI_event_t *evt ) {
-	  int tid=evt->midi_message[1]-0x08;
-	  tid+=GetBankOffset();
-	  MediaTrack *tr=CSurf_TrackFromID(tid,UseMcpTrackList());
-	  SoloAllTracks(0);
-	  CSurf_SetSurfaceSolo(tr,CSurf_OnSoloChange(tr,1),NULL);
-	  return true;
-	}
-	
-	bool OnChannelSelect( MIDI_event_t *evt ) {
-	  int tid=evt->midi_message[1]-0x18;
-	  tid&=7;
-	  if (SwapSelectMute())
-	  {
-	    MIDI_event_t mapped=*evt;
-	    mapped.midi_message[1]=0x10+tid;
-	    return OnMuteSolo(&mapped);
-	  }
-	  tid+=GetBankOffset();
+	bool ToggleTrackSelection( int slot ) {
+	  int tid=slot+GetBankOffset();
 	  MediaTrack *tr=CSurf_TrackFromID(tid,UseMcpTrackList());
 	  if (tr) CSurf_OnSelectedChange(tr,-1); // this will automatically update the surface
 	  return true;
 	}
-	
-	bool OnChannelSelectDC( MIDI_event_t *evt ) {
-	  if (SwapSelectMute()) return OnChannelSelect(evt);
-	  int tid=evt->midi_message[1]-0x18;
-	  tid&=7;
-	  tid+=GetBankOffset();
+
+	bool SelectOnlyTrack( int slot ) {
+	  int tid=slot+GetBankOffset();
 	  MediaTrack *tr=CSurf_TrackFromID(tid,UseMcpTrackList());
-	  
+	  if (!tr) return true;
+
 	  // Clear already selected tracks
 	  SelectedTrack *i = m_selected_tracks;
 	  while(i) {
@@ -1236,13 +1197,53 @@ class CSurf_MCU : public IReaperControlSurface
 	    if( track ) CSurf_OnSelectedChange( track, 0 );
 	    i = next;
 	  }
-	  
+
 	  // Select this track
 	  CSurf_OnSelectedChange( tr, 1 );
-	  
+
 	  return true;
 	}
 
+	bool OnMuteSolo( MIDI_event_t *evt ) {
+	  int tid=evt->midi_message[1]-0x08;
+	  int ismute=(tid&8);
+	  tid&=7;
+	  if (ismute)
+	    return SwapSelectMute()?ToggleTrackSelection(tid):ToggleTrackMute(tid);
+	  tid+=GetBankOffset();
+
+	  MediaTrack *tr=CSurf_TrackFromID(tid,UseMcpTrackList());
+	  if (tr)
+	  {
+	    CSurf_SetSurfaceSolo(tr,CSurf_OnSoloChangeEx(tr,-1,true),NULL);
+	    RefreshVisibleTrackButtonLeds(TrackButtonLed::Solo);
+	  }
+	  return true;
+	}
+
+	bool OnMuteSoloDC( MIDI_event_t *evt ) {
+	  int tid=evt->midi_message[1]&7;
+	  return SwapSelectMute()?SelectOnlyTrack(tid):ToggleTrackMute(tid);
+	}
+
+	bool OnSoloDC( MIDI_event_t *evt ) {
+	  int tid=evt->midi_message[1]-0x08;
+	  tid+=GetBankOffset();
+	  MediaTrack *tr=CSurf_TrackFromID(tid,UseMcpTrackList());
+	  SoloAllTracks(0);
+	  CSurf_SetSurfaceSolo(tr,CSurf_OnSoloChange(tr,1),NULL);
+	  return true;
+	}
+
+	bool OnChannelSelect( MIDI_event_t *evt ) {
+	  int tid=(evt->midi_message[1]-0x18)&7;
+	  return SwapSelectMute()?ToggleTrackMute(tid):ToggleTrackSelection(tid);
+	}
+
+	bool OnChannelSelectDC( MIDI_event_t *evt ) {
+	  int tid=(evt->midi_message[1]-0x18)&7;
+	  return SwapSelectMute()?ToggleTrackMute(tid):SelectOnlyTrack(tid);
+	}
 	bool OnTransport( MIDI_event_t *evt ) {
     switch(evt->midi_message[1]) {
     case 0x5f:
