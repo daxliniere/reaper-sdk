@@ -10,6 +10,7 @@ In REAPER's control-surface list, select **Mackie Control Universal (Dax Liniere
 - **Selected-track controls:** Volume, pan, mute, solo, and normal record-arm follow REAPER's selected-track and track-group ganging behavior.
 - **Control-surface toggle:** Untick **Enable control surface** to release its MIDI ports; tick it to reconnect.
 - **Record-arm buttons:** Choose normal **Record arm** operation or the optional **Bank select** mode.
+- **Select/Mute buttons:** Enable **Swap Select and Mute buttons** to exchange both functions and their LED feedback.
 - **Master fader:** Choose **Master volume**, **Last-touched FX parameter**, or **Disabled**. In FX mode, tap JOG to capture the current parameter; tap JOG again while it is still the last-touched parameter to disconnect it. Direct, take-FX, and container parameters are supported.
 - **Sends Mode:** Press **Mixer** to enter or leave. It controls only the first selected track and reports `No track selected` or `No sends present` when appropriate.
 - Turn a V-pot to change its send level. Turn JOG to move through sends one at a time.

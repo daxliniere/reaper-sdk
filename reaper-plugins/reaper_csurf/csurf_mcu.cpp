@@ -208,8 +208,9 @@ struct ScheduledAction {
 #define CONFIG_FLAG_MASTER_FADER_LTFP 32
 #define CONFIG_FLAG_RECARM_BANK 64
 #define CONFIG_FLAG_DISPLAY_COLLAPSED_CHILDREN 128
+#define CONFIG_FLAG_SWAP_SELECT_MUTE 256
 
-#define DAX_MCU_VERSION_BASE "0.3.19"
+#define DAX_MCU_VERSION_BASE "0.3.20"
 #ifdef DAX_MCU_FADER_DEBUG
 #define DAX_MCU_VERSION DAX_MCU_VERSION_BASE "-debug"
 #else
@@ -427,6 +428,11 @@ class CSurf_MCU : public IReaperControlSurface
       return !(m_cfg_flags&CONFIG_FLAG_DISPLAY_COLLAPSED_CHILDREN);
     }
 
+    bool SwapSelectMute() const
+    {
+      return (m_cfg_flags&CONFIG_FLAG_SWAP_SELECT_MUTE)!=0;
+    }
+
     enum class TrackButtonLed { Mute, Solo, RecArm };
 
     void RefreshVisibleTrackButtonLeds(TrackButtonLed type)
@@ -435,7 +441,7 @@ class CSurf_MCU : public IReaperControlSurface
 
       const char *parameter=type==TrackButtonLed::Mute ? "B_MUTE" :
         (type==TrackButtonLed::Solo ? "I_SOLO" : "I_RECARM");
-      const int noteBase=type==TrackButtonLed::Mute ? 0x10 :
+      const int noteBase=type==TrackButtonLed::Mute ? (SwapSelectMute()?0x18:0x10) :
         (type==TrackButtonLed::Solo ? 0x08 : 0x00);
       const int enabledVelocity=type==TrackButtonLed::Solo ? 1 : 0x7f;
 
@@ -1162,6 +1168,12 @@ class CSurf_MCU : public IReaperControlSurface
 	  int tid=evt->midi_message[1]-0x08;
 	  int ismute=(tid&8);
 	  tid&=7;
+	  if (ismute && SwapSelectMute())
+	  {
+	    MIDI_event_t mapped=*evt;
+	    mapped.midi_message[1]=0x18+tid;
+	    return OnChannelSelect(&mapped);
+	  }
 	  tid+=GetBankOffset();
 
 	  MediaTrack *tr=CSurf_TrackFromID(tid,UseMcpTrackList());
@@ -1176,6 +1188,13 @@ class CSurf_MCU : public IReaperControlSurface
 	  return true;
 	}
 	
+	bool OnMuteSoloDC( MIDI_event_t *evt ) {
+	  if (!SwapSelectMute()) return OnMuteSolo(evt);
+	  MIDI_event_t mapped=*evt;
+	  mapped.midi_message[1]=0x18+(evt->midi_message[1]&7);
+	  return OnChannelSelectDC(&mapped);
+	}
+
 	bool OnSoloDC( MIDI_event_t *evt ) {
 	  int tid=evt->midi_message[1]-0x08;
 	  tid+=GetBankOffset();
@@ -1188,6 +1207,12 @@ class CSurf_MCU : public IReaperControlSurface
 	bool OnChannelSelect( MIDI_event_t *evt ) {
 	  int tid=evt->midi_message[1]-0x18;
 	  tid&=7;
+	  if (SwapSelectMute())
+	  {
+	    MIDI_event_t mapped=*evt;
+	    mapped.midi_message[1]=0x10+tid;
+	    return OnMuteSolo(&mapped);
+	  }
 	  tid+=GetBankOffset();
 	  MediaTrack *tr=CSurf_TrackFromID(tid,UseMcpTrackList());
 	  if (tr) CSurf_OnSelectedChange(tr,-1); // this will automatically update the surface
@@ -1195,6 +1220,7 @@ class CSurf_MCU : public IReaperControlSurface
 	}
 	
 	bool OnChannelSelectDC( MIDI_event_t *evt ) {
+	  if (SwapSelectMute()) return OnChannelSelect(evt);
 	  int tid=evt->midi_message[1]-0x18;
 	  tid&=7;
 	  tid+=GetBankOffset();
@@ -1363,8 +1389,8 @@ class CSurf_MCU : public IReaperControlSurface
 	  if (evt->midi_message[1]>=0x20 && evt->midi_message[1]<=0x27)
 	    return OnRotaryEncoderPush(evt);
 
-	  static const int nHandlers = 23;
-	  static const int nPressOnlyHandlers = 20;
+	  static const int nHandlers = 24;
+	  static const int nPressOnlyHandlers = 21;
 	  static const ButtonHandler handlers[nHandlers] = {
 	      // Press down only events
 	      { 0x4a, 0x4e, &CSurf_MCU::OnAutoMode,           NULL },
@@ -1373,7 +1399,8 @@ class CSurf_MCU : public IReaperControlSurface
 	      { 0x20, 0x27, &CSurf_MCU::OnRotaryEncoderPush,  NULL },
 	      { 0x00, 0x07, &CSurf_MCU::OnRecArm,             NULL },
 	      { 0x08, 0x0f, NULL,                             &CSurf_MCU::OnSoloDC },
-	      { 0x08, 0x17, &CSurf_MCU::OnMuteSolo,           NULL },
+	      { 0x08, 0x0f, &CSurf_MCU::OnMuteSolo,           NULL },
+	      { 0x10, 0x17, &CSurf_MCU::OnMuteSolo,           &CSurf_MCU::OnMuteSoloDC },
 	      { 0x18, 0x1f, &CSurf_MCU::OnChannelSelect,      &CSurf_MCU::OnChannelSelectDC },
 	      { 0x5b, 0x5f, &CSurf_MCU::OnTransport,          NULL },
 	      { 0x54, 0x54, &CSurf_MCU::OnMarker,             NULL },
@@ -1838,7 +1865,7 @@ public:
       if (m_midiout && id>=0 && id < 256 && id < m_size)
       {
         if (id<8)
-          m_midiout->Send(0x90, 0x10+(id&7),mute?0x7f:0,-1);
+          m_midiout->Send(0x90, (SwapSelectMute()?0x18:0x10)+(id&7),mute?0x7f:0,-1);
       }     
     }
 
@@ -1853,7 +1880,7 @@ public:
       if (m_midiout && id>=0 && id < 256 && id < m_size)
       {
         if (id<8)
-          m_midiout->Send(0x90, 0x18+(id&7),selected?0x7f:0,-1);
+          m_midiout->Send(0x90, (SwapSelectMute()?0x10:0x18)+(id&7),selected?0x7f:0,-1);
       }
       UpdateAutoModes();
     }
@@ -2383,6 +2410,8 @@ static WDL_DLGRET dlgProc(HWND hwndDlg, UINT uMsg, WPARAM wParam, LPARAM lParam)
           CheckDlgButton(hwndDlg,IDC_CHECK3,BST_CHECKED);
         if (parms[4]&CONFIG_FLAG_DISPLAY_COLLAPSED_CHILDREN)
           CheckDlgButton(hwndDlg,IDC_DISPLAY_COLLAPSED_CHILDREN,BST_CHECKED);
+        if (parms[4]&CONFIG_FLAG_SWAP_SELECT_MUTE)
+          CheckDlgButton(hwndDlg,IDC_SWAP_SELECT_MUTE,BST_CHECKED);
         CheckDlgButton(hwndDlg,IDC_ENABLE_SURFACE,(parms[4]&CONFIG_FLAG_SURFACE_DISABLED)?BST_UNCHECKED:BST_CHECKED);
         CheckRadioButton(hwndDlg,IDC_MASTER_VOLUME,IDC_MASTER_DISABLED,
           (parms[4]&CONFIG_FLAG_MASTER_FADER_DISABLED)?IDC_MASTER_DISABLED:
@@ -2426,6 +2455,8 @@ static WDL_DLGRET dlgProc(HWND hwndDlg, UINT uMsg, WPARAM wParam, LPARAM lParam)
           cflags|=CONFIG_FLAG_NOBANKOFFSET;
         if (IsDlgButtonChecked(hwndDlg,IDC_DISPLAY_COLLAPSED_CHILDREN))
           cflags|=CONFIG_FLAG_DISPLAY_COLLAPSED_CHILDREN;
+        if (IsDlgButtonChecked(hwndDlg,IDC_SWAP_SELECT_MUTE))
+          cflags|=CONFIG_FLAG_SWAP_SELECT_MUTE;
         if (!IsDlgButtonChecked(hwndDlg,IDC_ENABLE_SURFACE)) cflags|=CONFIG_FLAG_SURFACE_DISABLED;
         if (IsDlgButtonChecked(hwndDlg,IDC_MASTER_DISABLED)) cflags|=CONFIG_FLAG_MASTER_FADER_DISABLED;
         if (IsDlgButtonChecked(hwndDlg,IDC_MASTER_LTFP)) cflags|=CONFIG_FLAG_MASTER_FADER_LTFP;
