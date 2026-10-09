@@ -10,12 +10,12 @@
 #include <winres.h>
 
 #ifdef DAX_MCU_FADER_DEBUG
-#define DAX_MCU_VERSION_STRING "0.3.21-debug\0"
-#define DAX_MCU_DIALOG_VERSION "v0.3.21-debug"
+#define DAX_MCU_VERSION_STRING "0.3.22-debug\0"
+#define DAX_MCU_DIALOG_VERSION "v0.3.22-debug"
 #define DAX_MCU_ORIGINAL_FILENAME "reaper_dax_mcu-debug-x64.dll\0"
 #else
-#define DAX_MCU_VERSION_STRING "0.3.21-dev\0"
-#define DAX_MCU_DIALOG_VERSION "v0.3.21-dev"
+#define DAX_MCU_VERSION_STRING "0.3.22-dev\0"
+#define DAX_MCU_DIALOG_VERSION "v0.3.22-dev"
 #define DAX_MCU_ORIGINAL_FILENAME "reaper_dax_mcu-x64.dll\0"
 #endif
 
@@ -32,8 +32,8 @@ LANGUAGE LANG_ENGLISH, SUBLANG_ENGLISH_US
 #endif //_WIN32
 
 VS_VERSION_INFO VERSIONINFO
- FILEVERSION 0,3,21,0
- PRODUCTVERSION 0,3,21,0
+ FILEVERSION 0,3,22,0
+ PRODUCTVERSION 0,3,22,0
  FILEFLAGSMASK 0x3fL
  FILEFLAGS VS_FF_PRERELEASE
  FILEOS VOS_NT_WINDOWS32
@@ -127,13 +127,13 @@ BEGIN
                     IDC_EDIT2_LBL2,108,52,148,8
     CONTROL         "Enable control surface",IDC_ENABLE_SURFACE,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,4,67,93,10
     CONTROL         "Ignore fader moves when fader is not being touched",
-                    IDC_CHECK1,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,112,67,190,10
+                    IDC_CHECK1,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,145,67,216,10
     CONTROL         "Map F1-F8 to go to markers",IDC_CHECK2,"Button",
                     BS_AUTOCHECKBOX | WS_TABSTOP,4,79,120,10
     CONTROL         "Ignore global bank offsets (always map to tracks specified)",
-                    IDC_CHECK3,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,112,79,249,10
+                    IDC_CHECK3,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,145,79,216,10
     CONTROL         "Display collapsed child tracks",IDC_DISPLAY_COLLAPSED_CHILDREN,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,4,91,140,10
-    CONTROL         "Swap Select and Mute buttons",IDC_SWAP_SELECT_MUTE,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,112,91,145,10
+    CONTROL         "Swap Select and Mute buttons",IDC_SWAP_SELECT_MUTE,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,145,91,216,10
     GROUPBOX        "Master fader",IDC_STATIC,4,104,176,62
     CONTROL         "Master volume",IDC_MASTER_VOLUME,"Button",BS_AUTORADIOBUTTON,10,116,70,10
     CONTROL         "Last-touched FX parameter",IDC_MASTER_LTFP,"Button",BS_AUTORADIOBUTTON,10,128,110,10
